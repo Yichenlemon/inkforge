@@ -6,6 +6,9 @@ dist/
 .cache/
 *.local
 
+# 便携版内置 Node 运行时（仅打包进 releases/*.zip，不入库；181MB 过大）
+runtime/
+
 # 运行时数据（数据库 / 上传 / 导出）—— 含用户文档，勿提交
 data/
 

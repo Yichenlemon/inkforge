@@ -43,8 +43,9 @@
 - 文件 / 编辑 / 插入 / 视图 / 帮助 五类下拉菜单，覆盖新建、保存、快照、导入、导出（HTML / Markdown）、发布、撤销重做、区块操作、模式切换等。
 - `⌘K` / `Ctrl+K` 命令面板，快速执行任意操作。
 
-### 🚀 一键部署脚本
-- `scripts/inkforge.sh` 终端数字菜单：**检测环境 / 一键部署 / 启动 / 结束 / 卸载 / 清理**，兼容 Git Bash / WSL / macOS / Linux。
+### 🚀 一键部署脚本（便携模式）
+- `scripts/inkforge.sh`（Git Bash / WSL / macOS / Linux）与 `scripts/inkforge.bat`（Windows 双击）数字菜单：**检测环境 / 一键部署 / 启动 / 结束 / 卸载 / 清理**。
+- **便携模式**：若包内自带 `runtime/` 目录（内置 Node.js 运行时），脚本优先使用它，目标机器**无需安装 Node / npm** 即可运行。
 
 ### ✅ 微信公众平台合规
 - 内置 `wechatify` 清洗管线：剥离 `<script>`、JS、`onclick`、CSS `animation` / `transition` / `@keyframes` / `id` / `position`，仅保留 SMIL SVG、`<details>`、`:active` / `:checked` 等微信允许的写法。
@@ -89,9 +90,8 @@ inkforge/
 ## 🚀 快速开始
 
 ### 环境要求
-- **Node.js ≥ 18**（推荐 22）
-- **npm ≥ 9**
-- Windows 建议使用 **Git Bash** 运行脚本
+- **从源码运行**：Node.js ≥ 18（推荐 22）、npm ≥ 9，Windows 建议用 Git Bash。
+- **便携版（发布包）**：包内已内置 `runtime/`（Node 运行时）与 `node_modules`，**目标机器无需安装任何环境**，解压即用。
 
 ### 安装与开发
 ```bash
@@ -118,6 +118,7 @@ npm start            # 启动 Express，单端口 5177 同时托管 API 与前�
 ## 🛠 一键管理脚本
 
 ```bash
+# Git Bash / WSL / macOS / Linux
 ./scripts/inkforge.sh        # 进入数字菜单
 ./scripts/inkforge.sh detect  # 直接执行某项，跳过菜单
 ./scripts/inkforge.sh deploy
@@ -125,6 +126,10 @@ npm start            # 启动 Express，单端口 5177 同时托管 API 与前�
 ./scripts/inkforge.sh stop
 ./scripts/inkforge.sh uninstall
 ./scripts/inkforge.sh cleanup
+
+# Windows（双击即可，无需 Git Bash）
+scripts\inkforge.bat         # 进入数字菜单
+scripts\inkforge.bat start   # 直接执行某项
 ```
 
 菜单项：
@@ -138,14 +143,23 @@ npm start            # 启动 Express，单端口 5177 同时托管 API 与前�
 
 ---
 
-## 📦 版本发布包
+## 📦 版本发布包（便携版 · 解压即跑）
 
-仓库内 `releases/inkforge-<version>.zip` 为可分发的版本包，包含：
-- 完整前端源码 + 已构建的 `dist/`
-- 后端源码与脚本
-- `README.md` / `RELEASE_NOTES.md` / `LICENSE`
+仓库 `releases/inkforge-<version>.zip` 为**自包含便携包**，**解压后无需在目标机器安装 Node / npm**：
 
-**不含** `node_modules`（需自行 `npm install`）。详见 [`RELEASE_NOTES.md`](./RELEASE_NOTES.md)。
+- ✅ 内置 Node.js 运行时（`runtime/`，Windows 版随包提供，约 180 MB）
+- ✅ 完整 `node_modules`（含 tsx / vite / better-sqlite3 等全部依赖与预编译原生模块）
+- ✅ 已构建的 `dist/` 前端产物
+- ✅ 前端 / 后端源码、管理脚本、文档
+
+### 运行方式
+1. 解压 `inkforge-<version>.zip`
+2. Windows：双击 `scripts/inkforge.bat`；macOS / Linux / Git Bash：`bash scripts/inkforge.sh`
+3. 菜单选 **3) 启动服务**，待出现 `http://localhost:5177`
+4. 浏览器打开 http://localhost:5177 即可使用
+5. 菜单 **4) 结束服务** 或关闭窗口停止
+
+脚本会自动优先使用内置 `runtime/node`，仅在缺失时才回退系统 Node。更多说明见 [`RELEASE_NOTES.md`](./RELEASE_NOTES.md)。
 
 ---
 

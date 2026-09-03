@@ -3,8 +3,13 @@
 #  InkForge 一键管理脚本 (inkforge.sh)
 #  在终端里输入数字即可执行：检测环境 / 一键部署 / 启动 / 结束 / 卸载 / 清理
 #
+#  ★ 便携模式（默认）★
+#    若本项目自带 runtime/ 目录（内置 Node.js 运行时），脚本会优先使用它，
+#    无需在目标机器上安装 Node / npm —— 解压即跑。
+#    仅在 runtime/ 不存在时才回退到系统 node / npm（源码版）。
+#
 #  适用终端：Git Bash (Windows) / WSL / macOS / Linux 的 bash
-#  依赖：node >= 18（推荐 22）、npm、curl、unzip/zip（打包时）
+#  依赖：便携版无需任何外部依赖；源码版需 node >= 18（推荐 22）、npm
 #
 #  用法：
 #    ./scripts/inkforge.sh          # 进入数字菜单
@@ -36,8 +41,25 @@ DATA_DIR="$ROOT/data"
 LOG_DIR="$DATA_DIR/logs"
 PID_DIR="$DATA_DIR/.pids"
 API_PID="$PID_DIR/api.pid"
-WEB_PID="$PID_DIR/web.pid"
 LOCKFILE="$ROOT/package-lock.json"
+
+# ---- 解析 Node / npm：优先使用内置运行时 runtime/（便携版），否则回退系统 -----
+resolve_runtime() {
+  if [ -f "$ROOT/runtime/node.exe" ]; then
+    NODE="$ROOT/runtime/node.exe"
+    if [ -f "$ROOT/runtime/npm.cmd" ]; then NPM="$ROOT/runtime/npm.cmd"
+    elif [ -f "$ROOT/runtime/node_modules/npm/bin/npm-cli.js" ]; then NPM="$NODE $ROOT/runtime/node_modules/npm/bin/npm-cli.js"
+    else NPM="npm"; fi
+    RUNTIME_MODE="bundled (Windows)"
+  elif [ -x "$ROOT/runtime/bin/node" ]; then
+    NODE="$ROOT/runtime/bin/node"
+    NPM="$ROOT/runtime/bin/npm"
+    RUNTIME_MODE="bundled (Unix)"
+  else
+    NODE="node"; NPM="npm"; RUNTIME_MODE="system"
+  fi
+}
+resolve_runtime
 
 # ---- 颜色（在支持的终端里才输出） ------------------------------------------
 if [ -t 1 ]; then
@@ -88,6 +110,15 @@ port_open() {
   return 1
 }
 
+# 启动命令：优先用内置 node + tsx CLI 直接跑 server/index.ts（无需 npm）
+launch_cmd() {
+  if [ -f "$ROOT/node_modules/tsx/dist/cli.mjs" ]; then
+    printf '%s' "$NODE \"$ROOT/node_modules/tsx/dist/cli.mjs\" \"$ROOT/server/index.ts\""
+  else
+    printf '%s' "$NPM start"
+  fi
+}
+
 # =============================================================================
 #  1) 检测环境
 # =============================================================================
@@ -97,9 +128,14 @@ do_detect() {
   printf "  ${C_W}项目根目录${C_0}   : %s\n" "$ROOT"
   printf "  ${C_W}InkForge 版本${C_0}: %s\n" "$VERSION"
   echo
-  info "基础运行时"
-  if have node; then ok "node  $(node -v)"; else err "未找到 node（需 >= 18，推荐 22）"; fi
-  if have npm; then ok "npm   $(npm -v)"; else err "未找到 npm"; fi
+  info "运行时来源"
+  if [ "$RUNTIME_MODE" != "system" ]; then
+    ok "使用内置运行时 runtime/ —— 目标机器无需安装 Node"
+  else
+    warn "使用系统 node / npm（源码版；便携版应自带 runtime/）"
+  fi
+  if [ -f "$NODE" ] || [ -x "$NODE" ]; then ok "node  $("$NODE" -v 2>/dev/null)"; else err "未找到 node（需 >= 18，推荐 22）"; fi
+  if [ -n "$("$NPM" -v 2>/dev/null)" ]; then ok "npm   $("$NPM" -v 2>/dev/null)"; else warn "未找到 npm（仅影响按需安装，不影响便携运行）"; fi
   if have git; then ok "git   $(git --version 2>/dev/null | awk '{print $3}')"; else warn "未找到 git（仅影响版本管理，不影响运行）"; fi
   if have curl; then ok "curl  可用"; else err "未找到 curl（端口探测需要）"; fi
   echo
@@ -131,22 +167,30 @@ do_detect() {
 do_deploy() {
   title "一键部署"
   echo
-  if ! have node || ! have npm; then err "缺少 node/npm，无法部署"; return 1; fi
+  if [ ! -f "$NODE" ] && [ ! -x "$NODE" ]; then err "缺少 node，无法部署"; return 1; fi
   mkdir -p "$LOG_DIR" "$PID_DIR"
 
-  info "安装依赖…"
-  if [ -f "$LOCKFILE" ]; then
-    npm ci 2>&1 | tail -n 5 && ok "依赖安装完成 (npm ci)"
+  if [ -d "$ROOT/node_modules" ]; then
+    ok "检测到已打包的依赖 node_modules（便携版）→ 跳过 npm install"
   else
-    npm install 2>&1 | tail -n 5 && ok "依赖安装完成 (npm install)"
+    info "安装依赖…"
+    if [ -f "$LOCKFILE" ]; then
+      "$NPM" ci 2>&1 | tail -n 5 && ok "依赖安装完成 (npm ci)"
+    else
+      "$NPM" install 2>&1 | tail -n 5 && ok "依赖安装完成 (npm install)"
+    fi
   fi
 
-  info "构建前端产物 (vite build)…"
-  npm run build 2>&1 | tail -n 8
-  [ -d "$ROOT/dist" ] && ok "dist 构建完成" || { err "dist 构建失败"; return 1; }
+  if [ -d "$ROOT/dist" ]; then
+    ok "dist 已构建（便携版已含）→ 跳过 vite build"
+  else
+    info "构建前端产物 (vite build)…"
+    "$NPM" run build 2>&1 | tail -n 8
+    [ -d "$ROOT/dist" ] && ok "dist 构建完成" || { err "dist 构建失败"; return 1; }
+  fi
 
   info "初始化数据目录与数据库…"
-  node -e "import('./server/db.js').then(()=>console.log('  db ready')).catch(e=>{console.error(e);process.exit(1)})" 2>&1 | tail -n 3
+  "$NODE" -e "import('./server/db.js').then(()=>console.log('  db ready')).catch(e=>{console.error(e);process.exit(1)})" 2>&1 | tail -n 3
   ok "数据库初始化完成"
   hr
   printf "  ${C_G}部署完成。${C_0} 接下来可执行 ${C_W}3) 启动${C_0} 启动服务。\n"
@@ -159,11 +203,11 @@ do_deploy() {
 do_start() {
   title "启动服务（生产模式）"
   echo
-  if ! have node; then err "缺少 node"; return 1; fi
+  if [ ! -f "$NODE" ] && [ ! -x "$NODE" ]; then err "缺少 node"; return 1; fi
   if [ ! -d "$ROOT/node_modules" ]; then err "未安装依赖，请先执行 2 一键部署"; return 1; fi
   if [ ! -d "$ROOT/dist" ]; then
     warn "dist 不存在，自动构建…"
-    npm run build >/dev/null 2>&1 && ok "构建完成" || { err "构建失败"; return 1; }
+    "$NPM" run build >/dev/null 2>&1 && ok "构建完成" || { err "构建失败"; return 1; }
   fi
   if port_open "$API_PORT"; then
     warn "端口 $API_PORT 已被占用，可能已在运行。先执行 4 结束 再启动。"
@@ -171,8 +215,12 @@ do_start() {
   fi
   mkdir -p "$LOG_DIR" "$PID_DIR"
 
-  info "后台启动 API + 前端 (npm start, 端口 $API_PORT)…"
-  nohup npm start >"$LOG_DIR/api.log" 2>&1 &
+  info "后台启动 API + 前端 (端口 $API_PORT)…"
+  if [ -f "$ROOT/node_modules/tsx/dist/cli.mjs" ]; then
+    nohup "$NODE" "$ROOT/node_modules/tsx/dist/cli.mjs" "$ROOT/server/index.ts" >"$LOG_DIR/api.log" 2>&1 &
+  else
+    nohup "$NPM" start >"$LOG_DIR/api.log" 2>&1 &
+  fi
   echo $! >"$API_PID"
   info "等待服务就绪（tsx 冷启动可能需 20~40s，最多等待 90s）…"
   local i=0 ready=0
@@ -227,6 +275,9 @@ do_stop() {
 do_uninstall() {
   title "卸载"
   echo
+  if [ "$RUNTIME_MODE" != "system" ]; then
+    warn "便携版：删除 node_modules 会移除内置打包的依赖，后续需重新 npm install 才能运行。"
+  fi
   warn "将删除 node_modules 与 dist（构建产物）。用户数据 ($DATA_DIR) 会被保留。"
   printf "  ${C_Y}确认卸载？输入 yes 继续：${C_0}"
   local ans; read -r ans
@@ -263,6 +314,7 @@ show_menu() {
   printf "\n${C_M}  ╔══════════════════════════════════════════════╗${C_0}\n"
   printf "${C_M}  ║${C_0}   ${C_W}InkForge 管理面板${C_0}  ${C_D}v$VERSION${C_0}            ${C_M}║${C_0}\n"
   printf "${C_M}  ╚══════════════════════════════════════════════╝${C_0}\n"
+  printf "  ${C_D}运行时：$RUNTIME_MODE${C_0}\n"
   printf "  ${C_C} 1)${C_0} 🔍  检测环境\n"
   printf "  ${C_C} 2)${C_0} 📦  一键部署 (安装依赖 + 构建)\n"
   printf "  ${C_C} 3)${C_0} ▶️   启动服务 (生产模式 :$API_PORT)\n"

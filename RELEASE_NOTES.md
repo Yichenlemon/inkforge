@@ -100,12 +100,24 @@ npm start            # 打开 http://localhost:5177
 
 ---
 
-## 版本发布包内容（releases/inkforge-1.0.0.zip）
+## 版本发布包内容（releases/inkforge-1.0.0.zip · 便携版）
 
-- ✅ 完整前端源码 + 已构建 `dist/`
-- ✅ 后端源码与 `scripts/`
-- ✅ `README.md` / `RELEASE_NOTES.md` / `LICENSE`
-- ❌ 不含 `node_modules`（需 `npm install`）
+**自包含、解压即跑，目标机器无需安装 Node / npm。**
+
+- ✅ 内置 Node.js 运行时 `runtime/`（Windows 版随包提供，约 180 MB）
+- ✅ 完整 `node_modules`（含 tsx / vite / better-sqlite3 等全部依赖与预编译原生模块）
+- ✅ 已构建 `dist/` 前端产物
+- ✅ 完整前端 / 后端源码 + `scripts/`（含 `inkforge.sh` 与 Windows `inkforge.bat`）
+- ✅ `README.md` / `RELEASE_NOTES.md` / `LICENSE` / `VERSION`
+
+### 便携版运行方式
+1. 解压 `inkforge-1.0.0.zip`
+2. Windows：双击 `scripts/inkforge.bat`；macOS / Linux / Git Bash：`bash scripts/inkforge.sh`
+3. 菜单选 **3) 启动服务**，待出现 `http://localhost:5177`
+4. 浏览器打开 http://localhost:5177 即可使用
+5. 菜单 **4) 结束服务** 或关闭窗口停止
+
+管理脚本会优先使用内置 `runtime/node`，仅在缺失时回退系统 Node。若需自行从源码运行，仍是 `npm install && npm run build && npm start`。
 
 ---
 
