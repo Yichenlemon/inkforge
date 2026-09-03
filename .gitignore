@@ -1,0 +1,31 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+.cache/
+*.local
+
+# 运行时数据（数据库 / 上传 / 导出）—— 含用户文档，勿提交
+data/
+
+# 日志
+*.log
+npm-debug.log*
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 版本发布包（二进制，单独分发）
+releases/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 参考素材（第三方案例，版权敏感，不入库）
+_ref/
