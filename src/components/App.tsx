@@ -15,6 +15,7 @@ import { ImportDialog } from './ImportDialog.jsx'
 import { ToolsDialog } from './ToolsDialog.jsx'
 import { LottieDialog } from './LottieDialog.jsx'
 import { AnimEditor } from './AnimEditor.jsx'
+import { ImageEditor } from './ImageEditor.jsx'
 import { CoverDialog } from './CoverDialog.jsx'
 import { CommandPalette } from './CommandPalette.jsx'
 import { HistoryPanel } from './HistoryPanel.jsx'
@@ -89,6 +90,19 @@ export default function App() {
     const t = setTimeout(() => { void save(true) }, 4000)
     return () => clearTimeout(t)
   }, [dirty, autosave])
+
+  /* 主题 + 强调色：写入 <html> 的 class 与 CSS 变量 */
+  const uiTheme = useUI((s) => s.uiTheme)
+  const accent = useUI((s) => s.accent)
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('theme-dark', uiTheme === 'dark')
+    root.classList.toggle('theme-paper', uiTheme === 'paper')
+    const m = accent.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    root.style.setProperty('--ink-accent', m
+      ? `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}`
+      : '44 107 237')
+  }, [uiTheme, accent])
 
   const save = async (silent = false) => {
     try {
@@ -246,6 +260,7 @@ export default function App() {
       <ToolsDialog />
       <LottieDialog />
       <AnimEditor />
+      <ImageEditor />
       <CoverDialog />
       <CommandPalette />
       <HistoryPanel />
@@ -263,14 +278,20 @@ export default function App() {
 
 function DocTitle() {
   const doc = useDoc((s) => s.doc)
+  const dirty = useDoc((s) => s.dirty)
   const setTitle = useDoc((s) => s.setTitle)
+  const setMeta = useDoc((s) => s.setMeta)
+  const defaultAuthor = useUI((s) => s.defaultAuthor)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
   const isDefault = !doc.title?.trim() || doc.title === '未命名文章'
-  const time = new Date(doc.createdAt ?? Date.now())
+  const created = new Date(doc.createdAt ?? Date.now())
+  const updated = new Date(doc.updatedAt ?? Date.now())
   const pad = (n: number) => String(n).padStart(2, '0')
-  const timeTag = isDefault ? ` ${pad(time.getMonth() + 1)}${pad(time.getDate())}-${pad(time.getHours())}${pad(time.getMinutes())}` : ''
+  const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const yy = String(created.getFullYear()).slice(2)
+  const timeTag = isDefault ? ` ${yy}${pad(created.getMonth() + 1)}${pad(created.getDate())}-${pad(created.getHours())}${pad(created.getMinutes())}` : ''
   const displayName = (isDefault ? '未命名文章' : doc.title) + timeTag
 
   const stats = useMemo(() => {
@@ -281,42 +302,63 @@ function DocTitle() {
     return { chars: plain.replace(/\s/g, '').length, blocks: doc.blocks.length }
   }, [doc.blocks])
 
+  const meta = doc.meta ?? {}
+  const author = (meta as any).author || defaultAuthor || '未署名'
+
+  const startEdit = () => {
+    setDraft(isDefault ? '' : doc.title)
+    setEditing(true)
+  }
+
   const commit = () => {
-    const t = draft.trim()
-    if (t) setTitle(t)
+    const v = draft.trim()
+    if (v && v !== doc.title) setTitle(v)
     setEditing(false)
   }
 
   return (
     <div className="relative group ml-1 min-w-0">
       {editing ? (
-        <input autoFocus className="input h-7 w-56 text-[12.5px]" value={draft}
+        <input autoFocus
+          className="input h-8 w-72 text-[13px] font-medium"
+          value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') setEditing(false)
+            if (e.key === 'Enter') { e.preventDefault(); commit() }
+            else if (e.key === 'Escape') { e.preventDefault(); setEditing(false) }
           }} />
       ) : (
-        <button className="flex items-center gap-1.5 max-w-[280px] px-2 h-8 rounded-md hover:bg-black/[0.05] transition-colors"
-          onClick={() => { setDraft(isDefault ? '' : doc.title); setEditing(true) }}
+        <button
+          className="flex items-center gap-2 max-w-[320px] px-2.5 h-8 rounded-md hover:bg-black/[0.05] transition-colors"
+          onClick={startEdit}
           title="点击重命名">
-          <FileText size={13} className="text-ink-text-3 shrink-0" />
+          <FileText size={14} className="text-ink-text-3 shrink-0" />
           <span className="text-[13px] font-medium truncate">{displayName}</span>
-          <span className="w-1 h-1 rounded-full shrink-0" style={{ background: useDoc((s) => s.dirty) ? '#E8A33D' : 'transparent' }} title={useDoc((s) => s.dirty) ? '未保存' : ''} />
+          {author !== '未署名' && <span className="text-[11px] text-ink-text-3 truncate max-w-[120px] hidden sm:inline">· {author}</span>}
+          {dirty && <span className="w-1.5 h-1.5 rounded-full bg-[#E8A33D] shrink-0" title="未保存" />}
         </button>
       )}
 
-      {/* 悬停详情卡片 */}
+      {/* 悬停详情卡片（不在编辑态下显示） */}
       {!editing && (
-        <div className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-64 bg-white rounded-lg border border-ink-line shadow-xl p-3">
-          <div className="text-[12.5px] font-semibold mb-1.5 truncate">{displayName}</div>
-          <div className="grid grid-cols-2 gap-y-1 text-[11.5px] text-ink-text-2">
+        <div className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-72 bg-white rounded-lg border border-ink-line shadow-xl p-3 text-[12px]">
+          <div className="font-semibold truncate mb-2">{displayName}</div>
+          <div className="grid grid-cols-[64px_1fr] gap-y-1 text-ink-text-2">
+            <span className="text-ink-text-3">作者</span>
+            <span className="truncate flex items-center gap-1.5">
+              <span className="truncate">{author}</span>
+              <button className="text-[10px] text-[#2C6BED] hover:underline shrink-0" onClick={() => {
+                const v = window.prompt('修改作者', author)
+                if (v !== null) setMeta({ author: v || undefined })
+              }}>编辑</button>
+            </span>
             <span className="text-ink-text-3">区块数</span><span className="tabular-nums">{stats.blocks}</span>
             <span className="text-ink-text-3">正文字数</span><span className="tabular-nums">{stats.chars.toLocaleString()}</span>
-            <span className="text-ink-text-3">创建时间</span><span>{time.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            <span className="text-ink-text-3">最近修改</span><span>{new Date(doc.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            <span className="text-ink-text-3">文档 ID</span><span className="font-mono text-[10.5px]">{doc.id}</span>
+            <span className="text-ink-text-3">创建时间</span><span className="font-mono text-[11px]">{ymd(created)}</span>
+            <span className="text-ink-text-3">最近修改</span><span className="font-mono text-[11px]">{ymd(updated)}</span>
+            <span className="text-ink-text-3">文档 ID</span><span className="font-mono text-[10.5px] truncate">{doc.id}</span>
+            <span className="text-ink-text-3">字数限制</span><span className="tabular-nums">标题 ≤ 64 · 摘要 ≤ 120</span>
           </div>
           <div className="text-[10.5px] text-[#2C6BED] mt-2">点击文件名可重命名</div>
         </div>

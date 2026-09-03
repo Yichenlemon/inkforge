@@ -1,6 +1,7 @@
 import React, { useMemo, useEffect } from 'react'
 import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, Copy, Lock, EyeOff, Code2,
+  ArrowUp, ArrowDown, Wand2,
 } from 'lucide-react'
 import type { Block, BlockStyle, ThemeTokens, TextAlign, ShadowLevel, BorderStyle } from '../../shared/types.js'
 import { THEMES, THEME_GROUPS, getTheme } from '../../shared/themes.js'
@@ -49,6 +50,7 @@ function BlockPanel() {
   const doc = useDoc((s) => s.doc)
   const selectedId = useUI((s) => s.selectedId)
   const block = useMemo(() => doc.blocks.find((b) => b.id === selectedId), [doc.blocks, selectedId])
+  const index = useMemo(() => doc.blocks.findIndex((b) => b.id === selectedId), [doc.blocks, selectedId])
 
   if (!block) {
     return (
@@ -59,11 +61,20 @@ function BlockPanel() {
     )
   }
 
+  const move = (delta: number) => useDoc.getState().moveBlockBy(block.id, delta)
+  const atTop = index <= 0
+  const atBottom = index < 0 || index >= doc.blocks.length - 1
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 h-9 border-b border-ink-line flex items-center justify-between shrink-0">
-        <span className="text-[12.5px] font-semibold">{BLOCK_TYPE_LABEL[block.type]}</span>
+        <span className="text-[12.5px] font-semibold truncate">{BLOCK_TYPE_LABEL[block.type]}</span>
         <div className="flex items-center gap-0.5">
+          <button className="btn btn-ghost btn-xs px-1" title="上移" disabled={atTop} onClick={() => move(-1)}><ArrowUp size={12} /></button>
+          <button className="btn btn-ghost btn-xs px-1" title="下移" disabled={atBottom} onClick={() => move(1)}><ArrowDown size={12} /></button>
+          {block.type === 'image' && (
+            <button className="btn btn-ghost btn-xs px-1" title="图片编辑" onClick={() => useUI.getState().openModal('imageEditor')}><Wand2 size={12} /></button>
+          )}
           <button className="btn btn-ghost btn-xs px-1" title="复制区块"
             onClick={() => { useDoc.getState().duplicateBlock(block.id); toast('已复制') }}><Copy size={12} /></button>
           <button className="btn btn-ghost btn-xs px-1" title="删除区块"
@@ -71,6 +82,11 @@ function BlockPanel() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
+        {block.type === 'image' && (
+          <button className="btn btn-soft btn-sm w-full mb-3" onClick={() => useUI.getState().openModal('imageEditor')}>
+            <Wand2 size={13} /> 打开图片编辑器（调色 / 滤镜 / 抠图）
+          </button>
+        )}
         <TypeSpecificProps block={block} />
       </div>
     </div>
@@ -625,13 +641,50 @@ function ThemePanel() {
 /* 文章信息                                                             */
 /* ------------------------------------------------------------------ */
 
+const WORD_SKIP_KEYS = new Set(['src', 'url', 'link', 'href', 'svg', 'html', 'code', 'sourceUrl', 'thumb', 'poster', 'cover', 'icon'])
+
+function countStats(doc: any) {
+  let chars = 0
+  let images = 0
+  const walk = (v: any) => {
+    if (v == null) return
+    if (typeof v === 'string') chars += v.replace(/\s/g, '').length
+    else if (Array.isArray(v)) v.forEach(walk)
+    else if (typeof v === 'object') {
+      for (const k of Object.keys(v)) { if (WORD_SKIP_KEYS.has(k)) continue; walk((v as any)[k]) }
+    }
+  }
+  for (const b of doc.blocks) {
+    if (b.type === 'image' || b.type === 'gallery' || b.type === 'svg' || b.type === 'qrcode') images++
+    walk(b.data)
+    if ((b.style as any)?.caption) walk((b.style as any).caption)
+  }
+  return { chars, images, blocks: doc.blocks.length }
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-ink-line bg-black/[0.02] py-2 text-center">
+      <div className="text-[16px] font-semibold text-ink-text tabular-nums leading-none">{value}</div>
+      <div className="text-[10.5px] text-ink-text-3 mt-1">{label}</div>
+    </div>
+  )
+}
+
 function DocPanel() {
   const doc = useDoc((s) => s.doc)
   const setMeta = useDoc((s) => s.setMeta)
   const meta = doc.meta ?? {}
+  const stats = useMemo(() => countStats(doc), [doc])
   return (
     <div className="flex-1 overflow-y-auto p-3">
-      <div className="section-title px-0 pt-0">发布信息</div>
+      <div className="section-title px-0 pt-0">文章统计</div>
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
+        <Stat label="字数" value={stats.chars} />
+        <Stat label="图片" value={stats.images} />
+        <Stat label="区块" value={stats.blocks} />
+      </div>
+      <div className="section-title px-0">发布信息</div>
       <Field label="作者"><input className="input" value={meta.author ?? ''} onChange={(e) => setMeta({ author: e.target.value })} /></Field>
       <div className="py-1">
         <div className="label mb-1">摘要（{meta.digest?.length ?? 0}/120）</div>

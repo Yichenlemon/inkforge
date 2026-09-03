@@ -12,12 +12,15 @@ import SubscriptExt from '@tiptap/extension-subscript'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link2, Link2Off,
   Palette, Highlighter, RemoveFormatting, Superscript, Subscript, Paintbrush, Smile,
-  ALargeSmall, ChevronDown, AlignLeft, Plus, Minus, Indent, Layers,
+  ChevronDown, AlignLeft, Plus, Minus, Indent, Layers, AlignCenter, AlignRight, AlignJustify,
 } from 'lucide-react'
 import { ColorField, toast } from '../lib/ui.js'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
-import { makeBlock } from '../../shared/types.js'
+import { makeBlock, type Block } from '../../shared/types.js'
+import { COMPONENTS_BY_CATEGORY, searchComponents } from '../lib/components.js'
+import { searchIllustrations } from '../lib/illustrations.js'
+import { yibanApi } from '../lib/api.js'
 
 const HIGHLIGHT_COLORS = ['#FFF3B0', '#FFD9D9', '#D9F2E6', '#DCE8FF', '#EFDCFF', '#FFE7CC', 'transparent']
 
@@ -249,7 +252,7 @@ export function RichEditor({
 
 function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: string) => void }) {
   const [, force] = useState(0)
-  const [menu, setMenu] = useState<'color' | 'highlight' | 'font' | 'para' | 'insert' | 'emoji' | null>(null)
+  const [menu, setMenu] = useState<'color' | 'highlight' | 'font' | 'para' | 'align' | 'insert' | 'emoji' | null>(null)
   const [brush, setBrushState] = useState<BrushStyle | null>(formatBrush.get())
   const [recentColors, setRecentColors] = useState<string[]>(getRecentColors())
 
@@ -273,6 +276,17 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
 
   const run = (fn: (ed: Editor) => void) => { fn(editor); onChange(editor.getHTML()) }
   const toggleMenu = (m: typeof menu) => setMenu(menu === m ? null : m)
+
+  const [insertTab, setInsertTab] = useState<'block' | 'component' | 'style' | 'asset'>('block')
+  /** 在选中区块之后插入一批区块 */
+  const insertAfter = (blocks: Block[]) => {
+    const id = useUI.getState().selectedId
+    const ds = useDoc.getState()
+    const idx = ds.doc.blocks.findIndex((b) => b.id === id)
+    ds.insertBlocks(blocks, idx >= 0 ? idx + 1 : undefined)
+    setMenu(null)
+    toast('已插入')
+  }
 
   const toggleBrush = () => {
     if (brush) { formatBrush.set(null); return }
@@ -365,6 +379,15 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         <TBtn active={editor.isActive('subscript')} title="下标" onClick={() => run((e) => e.chain().focus().toggleSubscript().run())}><Subscript size={13} /></TBtn>
 
         <Sep />
+        <TBtn className="bb-trigger" title="段落对齐（左 / 中 / 右 / 两端）— 作用于当前块" active={menu === 'align'} onClick={() => toggleMenu('align')}>
+          <span className="flex items-center">
+            {getBlockStyle().textAlign === 'left' || !getBlockStyle().textAlign ? <AlignLeft size={13} />
+              : getBlockStyle().textAlign === 'center' ? <AlignCenter size={13} />
+              : getBlockStyle().textAlign === 'right' ? <AlignRight size={13} />
+              : <AlignJustify size={13} />}
+            <ChevronDown size={9} />
+          </span>
+        </TBtn>
         <TBtn className="bb-trigger" title="字号" active={menu === 'font'} onClick={() => toggleMenu('font')}>
           <span className="flex items-center"><span className="text-[12px] font-semibold">A</span><ChevronDown size={9} /></span>
         </TBtn>
@@ -375,7 +398,7 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         </TBtn>
 
         <Sep />
-        <TBtn className="bb-trigger" title="插入（嵌套 / 区块 / 叠加层级）" active={menu === 'insert'} onClick={() => toggleMenu('insert')}>
+        <TBtn className="bb-trigger" title="插入：区块 / 组件 / 样式库 / 素材" active={menu === 'insert'} onClick={() => toggleMenu('insert')}>
           <span className="flex items-center"><Plus size={13} /><ChevronDown size={9} /></span>
         </TBtn>
         <TBtn className="bb-trigger" title="文字颜色" active={menu === 'color'} onClick={() => toggleMenu('color')}>
@@ -402,6 +425,20 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         </TBtn>
         <TBtn title="清除格式" onClick={() => run((e) => e.chain().focus().unsetAllMarks().clearNodes().run())}><RemoveFormatting size={13} /></TBtn>
       </div>
+
+      {/* 对齐 */}
+      {menu === 'align' && (
+        <Pop>
+          <div className="grid grid-cols-4 gap-1">
+            {([['left', AlignLeft, '居左'], ['center', AlignCenter, '居中'], ['right', AlignRight, '居右'], ['justify', AlignJustify, '两端']] as const).map(([a, Ic, l]) => (
+              <button key={a} onClick={() => { patchBlockStyle({ textAlign: a as any }); setMenu(null) }}
+                className={`h-7 rounded border text-[11.5px] flex items-center justify-center gap-1 ${getBlockStyle().textAlign === a ? 'border-[#2C6BED] text-[#2C6BED] font-semibold' : 'border-ink-line hover:border-[#2C6BED]'}`}>
+                <Ic size={12} /> {l}
+              </button>
+            ))}
+          </div>
+        </Pop>
+      )}
 
       {/* 字号 */}
       {menu === 'font' && (
@@ -458,45 +495,64 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         </Pop>
       )}
 
-      {/* 插入 */}
+      {/* 插入（区块 / 组件 / 样式库 / 素材） */}
       {menu === 'insert' && (
         <Pop wide>
-          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 嵌套进当前块</div>
-          <div className="grid grid-cols-3 gap-1 mb-2">
-            <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('·').run()); setMenu(null) }}>间隔点 ·</InsBtn>
-            <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('\u3000').run()); setMenu(null) }}>全角空格</InsBtn>
-            <InsBtn onClick={() => {
-              const name = window.prompt('变量名（配合片段库变量填充）', '公众号名')
-              if (name) run((e) => e.chain().focus().insertContent(`{{${name}}}`).run())
-              setMenu(null)
-            }}>变量 {'{{}}'}</InsBtn>
+          <div className="flex gap-1 mb-2 border-b border-ink-line pb-1.5">
+            {([
+              ['block', '区块'], ['component', '组件'], ['style', '样式库'], ['asset', '素材'],
+            ] as const).map(([t, l]) => (
+              <button key={t} onClick={() => setInsertTab(t)}
+                className={`px-2 py-1 rounded text-[11.5px] transition-colors ${insertTab === t ? 'bg-[#2C6BED]/10 text-[#2C6BED] font-semibold' : 'text-ink-text-2 hover:bg-black/[0.05]'}`}>
+                {l}
+              </button>
+            ))}
           </div>
-          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">插入区块（当前块 上方 ↑ / 下方 ↓）</div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
-            <InsBtn onClick={() => insertSibling('above', makeBlock('divider', {}))}>┄ 分割线 ↑</InsBtn>
-            <InsBtn onClick={() => insertSibling('below', makeBlock('divider', {}))}>┄ 分割线 ↓</InsBtn>
-            <InsBtn onClick={() => insertSibling('above', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↑</InsBtn>
-            <InsBtn onClick={() => insertSibling('below', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↓</InsBtn>
-            <InsBtn onClick={() => insertSibling('above', makeBlock('paragraph', { html: '' }))}>空段落 ↑</InsBtn>
-            <InsBtn onClick={() => insertSibling('below', makeBlock('paragraph', { html: '' }))}>空段落 ↓</InsBtn>
-            <InsBtn onClick={() => {
-              const url = window.prompt('图片地址（https://…）')
-              if (!url) return
-              insertSibling('below', makeBlock('image', { src: url, alt: '', display: 'block', width: '100%' }))
-            }}>图片链接 ↓</InsBtn>
-            <InsBtn onClick={() => {
-              const url = window.prompt('图片地址（https://…）')
-              if (!url) return
-              const right = window.confirm('确定 = 右浮动（文字环绕），取消 = 左浮动')
-              insertSibling('below', makeBlock('image', { src: url, alt: '', display: right ? 'float-right' : 'float-left', width: '45%' }))
-            }}>浮动图文 ↓</InsBtn>
-          </div>
-          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 叠加角标（层级选择：压在其他元素上方 / 垫在下方）</div>
-          <div className="grid grid-cols-3 gap-1">
-            <InsBtn onClick={() => insertOverlay(99)}>置顶层 z99</InsBtn>
-            <InsBtn onClick={() => insertOverlay(1)}>普通层 z1</InsBtn>
-            <InsBtn onClick={() => insertOverlay(0)}>置底层 z0</InsBtn>
-          </div>
+
+          {insertTab === 'block' && (
+            <>
+              <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 嵌套进当前块</div>
+              <div className="grid grid-cols-3 gap-1 mb-2">
+                <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('·').run()); setMenu(null) }}>间隔点 ·</InsBtn>
+                <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('\u3000').run()); setMenu(null) }}>全角空格</InsBtn>
+                <InsBtn onClick={() => {
+                  const name = window.prompt('变量名（配合片段库变量填充）', '公众号名')
+                  if (name) run((e) => e.chain().focus().insertContent(`{{${name}}}`).run())
+                  setMenu(null)
+                }}>变量 {'{{}}'}</InsBtn>
+              </div>
+              <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">插入区块（当前块 上方 ↑ / 下方 ↓）</div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
+                <InsBtn onClick={() => insertSibling('above', makeBlock('divider', {}))}>┄ 分割线 ↑</InsBtn>
+                <InsBtn onClick={() => insertSibling('below', makeBlock('divider', {}))}>┄ 分割线 ↓</InsBtn>
+                <InsBtn onClick={() => insertSibling('above', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↑</InsBtn>
+                <InsBtn onClick={() => insertSibling('below', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↓</InsBtn>
+                <InsBtn onClick={() => insertSibling('above', makeBlock('paragraph', { html: '' }))}>空段落 ↑</InsBtn>
+                <InsBtn onClick={() => insertSibling('below', makeBlock('paragraph', { html: '' }))}>空段落 ↓</InsBtn>
+                <InsBtn onClick={() => {
+                  const url = window.prompt('图片地址（https://…）')
+                  if (!url) return
+                  insertSibling('below', makeBlock('image', { src: url, alt: '', display: 'block', width: '100%' }))
+                }}>图片链接 ↓</InsBtn>
+                <InsBtn onClick={() => {
+                  const url = window.prompt('图片地址（https://…）')
+                  if (!url) return
+                  const right = window.confirm('确定 = 右浮动（文字环绕），取消 = 左浮动')
+                  insertSibling('below', makeBlock('image', { src: url, alt: '', display: right ? 'float-right' : 'float-left', width: '45%' }))
+                }}>浮动图文 ↓</InsBtn>
+              </div>
+              <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 叠加角标（层级选择：压在其他元素上方 / 垫在下方）</div>
+              <div className="grid grid-cols-3 gap-1">
+                <InsBtn onClick={() => insertOverlay(99)}>置顶层 z99</InsBtn>
+                <InsBtn onClick={() => insertOverlay(1)}>普通层 z1</InsBtn>
+                <InsBtn onClick={() => insertOverlay(0)}>置底层 z0</InsBtn>
+              </div>
+            </>
+          )}
+
+          {insertTab === 'component' && <ComponentInsert onInsert={insertAfter} />}
+          {insertTab === 'style' && <YibanInsert onInsert={insertAfter} />}
+          {insertTab === 'asset' && <AssetInsert onInsert={insertAfter} />}
         </Pop>
       )}
 
@@ -553,6 +609,88 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
           </div>
         </Pop>
       )}
+    </div>
+  )
+}
+
+/* --- 插入：组件（内置组件库） --- */
+function ComponentInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
+  const [q, setQ] = useState('')
+  const list = searchComponents(q)
+  return (
+    <div>
+      <input className="input mb-2" placeholder="搜索组件（标题 / 卡片 / 引用…）" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
+        {COMPONENTS_BY_CATEGORY.map((g) => {
+          const items = g.items.filter((it) => list.includes(it))
+          if (!items.length) return null
+          return (
+            <div key={g.category}>
+              <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">{g.category}</div>
+              <div className="grid grid-cols-2 gap-1">
+                {items.map((c) => (
+                  <button key={c.id} title={c.name} onClick={() => onInsert(c.create())}
+                    className="h-7 rounded border border-ink-line text-[11.5px] px-1.5 text-left truncate hover:border-[#2C6BED] hover:text-[#2C6BED]">
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* --- 插入：样式库（壹伴 16,000+ 样式） --- */
+function YibanInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
+  const [items, setItems] = useState<any[]>([])
+  const [q, setQ] = useState('')
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    yibanApi.list(q, 1, 40).then((r: any) => { if (alive) setItems(r.items ?? []) })
+      .catch(() => { if (alive) setItems([]) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [q])
+  return (
+    <div>
+      <input className="input mb-2" placeholder="搜索样式库…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
+        {items.map((m) => (
+          <button key={m.id} title={`${m.desc?.slice(0, 20) || '样式'} · 点击插入`} onClick={() => onInsert([makeBlock('html', { html: m.detail }, { marginTop: 8, marginBottom: 16 })])}
+            className="rounded border border-ink-line overflow-hidden text-left hover:border-[#2C6BED]">
+            <div className="h-16 overflow-hidden bg-white pointer-events-none">
+              <div className="origin-top-left" style={{ transform: 'scale(0.5)', width: '200%' }} dangerouslySetInnerHTML={{ __html: m.detail }} />
+            </div>
+            <div className="px-1.5 py-1 text-[11px] text-ink-text-2 truncate border-t border-ink-line">{m.desc?.slice(0, 16) || '样式'}</div>
+          </button>
+        ))}
+      </div>
+      {loading && <div className="text-[11px] text-ink-text-3 mt-1">加载中…</div>}
+      {!loading && !items.length && <div className="text-[11px] text-ink-text-3 py-3 text-center">没有匹配的样式</div>}
+    </div>
+  )
+}
+
+/* --- 插入：素材（内置 SVG 插画） --- */
+function AssetInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
+  const [q, setQ] = useState('')
+  const list = searchIllustrations(q)
+  return (
+    <div>
+      <input className="input mb-2" placeholder="搜索素材（箭头 / 商务 / 动效…）" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto">
+        {list.map((il) => (
+          <button key={il.id} title={il.name} onClick={() => onInsert([makeBlock('svg', { svg: il.svg, name: il.name }, { marginBottom: 12 })])}
+            className="aspect-square rounded border border-ink-line flex items-center justify-center p-2 text-ink-text hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04]">
+            <span className="w-full h-full" dangerouslySetInnerHTML={{ __html: il.svg }} />
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

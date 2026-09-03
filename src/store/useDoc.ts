@@ -85,10 +85,26 @@ export const useDoc = create<DocState>((set, get) => {
     load: (doc) => set({ doc: migrateDoc(doc), dirty: false, past: [], future: [] }),
     newDoc: (themeId = 'clean', opts) => {
       const base = emptyDoc(themeId)
+      const ui = useUI.getState()
+      const blocks = (opts?.initBlocks ?? base.blocks).map((b, i) => {
+        if (i === 0 && (b.type === 'paragraph' || b.type === 'heading')) {
+          return {
+            ...b,
+            style: {
+              ...b.style,
+              fontSize: ui.defaultFontSize || b.style.fontSize,
+              lineHeight: ui.defaultLineHeight || b.style.lineHeight,
+              fontFamily: ui.defaultFont && ui.defaultFont !== 'system' ? ui.defaultFont : b.style.fontFamily,
+            },
+          }
+        }
+        return b
+      })
       const doc: Doc = {
         ...base,
         title: opts?.title ?? base.title,
-        blocks: opts?.initBlocks ?? base.blocks,
+        meta: { ...(base.meta ?? {}), author: ui.defaultAuthor || undefined },
+        blocks,
       }
       set({ doc, dirty: false, past: [], future: [] })
     },

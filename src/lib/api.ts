@@ -58,6 +58,7 @@ export const assetsApi = {
   remove: (id: string) => api.del(`/assets/${id}`),
   patch: (id: string, body: any) => api.patch(`/assets/${id}`, body),
   process: (body: any) => api.post('/image/process', body),
+  preview: (body: any) => api.post('/image/preview', body),
   gifCheck: (url: string) => api.post('/image/gif-check', { url }),
   gifReduce: (url: string, maxFrames = 300) => api.post('/image/gif-reduce', { url, maxFrames }),
   info: (url: string) => api.post('/image/info', { url }),
@@ -148,10 +149,10 @@ export const metaApi = {
 }
 
 export const onlineApi = {
-  photos: (q: string, page = 1, per = 24) =>
-    api.get(`/online/photos?q=${encodeURIComponent(q)}&page=${page}&per=${per}`),
-  randomPhotos: (seed: string, count = 12) =>
-    api.get(`/online/photos/random?seed=${encodeURIComponent(seed)}&count=${count}`),
+  photos: (q: string, page = 1, per = 24, provider = 'auto') =>
+    api.get(`/online/photos?q=${encodeURIComponent(q)}&page=${page}&per=${per}&provider=${provider}`),
+  randomPhotos: (seed: string, count = 12, cat = '') =>
+    api.get(`/online/photos/random?seed=${encodeURIComponent(seed)}&count=${count}${cat ? `&cat=${encodeURIComponent(cat)}` : ''}`),
   icons: (q: string, limit = 60) =>
     api.get(`/online/icons?q=${encodeURIComponent(q)}&limit=${limit}`),
   iconSvg: (name: string, color?: string, height = 48) =>

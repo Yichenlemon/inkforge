@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import sharp from 'sharp'
 import multer from 'multer'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -113,7 +114,7 @@ assetsRouter.delete('/assets/:id', asyncHandler(async (req, res) => {
 /* 图片处理                                                             */
 /* ------------------------------------------------------------------ */
 
-function resolveInput(body: any): { buf: Buffer; assetId?: string } | null {
+async function resolveInput(body: any): Promise<{ buf: Buffer; assetId?: string } | null> {
   if (body?.assetId) {
     const a = getAsset(str(body.assetId))
     if (!a) notFound('素材不存在')
@@ -124,12 +125,47 @@ function resolveInput(body: any): { buf: Buffer; assetId?: string } | null {
     const file = path.join(UPLOAD_DIR, path.basename(str(body.url)))
     return { buf: fs.readFileSync(file) }
   }
+  // 外链图片：抓取后处理（用于编辑器里直接修外部图）
+  if (body?.url && /^https?:\/\//.test(str(body.url))) {
+    try {
+      const r = await fetch(str(body.url), { headers: { 'User-Agent': 'Mozilla/5.0 InkForge' } })
+      if (r.ok) return { buf: Buffer.from(await r.arrayBuffer()) }
+    } catch { /* 抓取失败 → 返回 null */ }
+  }
   return null
+}
+
+/**
+ * 按请求参数对图片做调整：旋转 → 滤镜（亮度/对比度/饱和/灰度/模糊/锐化/色相/反相/圆角/描边）→ 去背景。
+ * 不落盘、不建素材，供预览与保存复用。
+ */
+async function adjustBuffer(buf: Buffer, b: any): Promise<Buffer> {
+  let out = buf
+  if (b.rotate) out = await sharp(out).rotate(num(b.rotate)).toBuffer()
+  const hasFilter = b.brightness != null || b.saturation != null || b.contrast != null ||
+    b.grayscale || b.blur != null || b.sharpen || b.hue != null || b.negate ||
+    b.radius != null || b.borderWidth
+  if (hasFilter) {
+    out = await applyFilter(out, {
+      brightness: b.brightness != null ? num(b.brightness, 1) : undefined,
+      saturation: b.saturation != null ? num(b.saturation, 1) : undefined,
+      contrast: b.contrast != null ? num(b.contrast, 1) : undefined,
+      grayscale: bool(b.grayscale),
+      blur: b.blur != null ? num(b.blur) : undefined,
+      sharpen: bool(b.sharpen),
+      hue: b.hue != null ? num(b.hue) : undefined,
+      negate: bool(b.negate),
+      radius: b.radius != null ? num(b.radius) : undefined,
+      border: b.borderWidth ? { width: num(b.borderWidth), color: str(b.borderColor, '#eee') } : undefined,
+    })
+  }
+  if (b.removeBg) out = await removeBackground(out, num(b.tolerance, 32), num(b.feather, 1))
+  return out
 }
 
 /** 返回处理后的新素材 */
 assetsRouter.post('/image/process', asyncHandler(async (req, res) => {
-  const input = resolveInput(req.body)
+  const input = await resolveInput(req.body)
   if (!input) badRequest('需要 assetId 或 url')
   const b = req.body ?? {}
   let out = input.buf
@@ -142,20 +178,8 @@ assetsRouter.post('/image/process', asyncHandler(async (req, res) => {
     })
     out = r.buffer
   }
-  if (b.filters) {
-    out = await applyFilter(out, {
-      brightness: b.brightness != null ? num(b.brightness, 1) : undefined,
-      saturation: b.saturation != null ? num(b.saturation, 1) : undefined,
-      contrast: b.contrast != null ? num(b.contrast, 1) : undefined,
-      grayscale: bool(b.grayscale), blur: b.blur != null ? num(b.blur) : undefined,
-      sharpen: bool(b.sharpen), hue: b.hue != null ? num(b.hue) : undefined,
-      negate: bool(b.negate), radius: b.radius != null ? num(b.radius) : undefined,
-      border: b.borderWidth ? { width: num(b.borderWidth), color: str(b.borderColor, '#eee') } : undefined,
-    })
-  }
-  if (b.removeBg) {
-    out = await removeBackground(out, num(b.tolerance, 32), num(b.feather, 1))
-  }
+  // 旋转 + 滤镜 + 去背景（含 rotate）
+  out = await adjustBuffer(out, b)
   if (b.watermark) {
     out = await watermark(out, {
       type: b.wmType === 'image' ? 'image' : 'text',
@@ -182,7 +206,7 @@ assetsRouter.post('/image/process', asyncHandler(async (req, res) => {
 
 /** GIF 合规检查 */
 assetsRouter.post('/image/gif-check', asyncHandler(async (req, res) => {
-  const input = resolveInput(req.body)
+  const input = await resolveInput(req.body)
   if (!input) badRequest('需要 assetId 或 url')
   const result = await checkGif(input.buf)
   return ok(res, { check: result })
@@ -190,7 +214,7 @@ assetsRouter.post('/image/gif-check', asyncHandler(async (req, res) => {
 
 /** GIF 降帧 */
 assetsRouter.post('/image/gif-reduce', asyncHandler(async (req, res) => {
-  const input = resolveInput(req.body)
+  const input = await resolveInput(req.body)
   if (!input) badRequest('需要 assetId 或 url')
   const out = await reduceGifFrames(input.buf, num(req.body?.maxFrames, 300))
   const name = await saveBuffer(out, 'gif')
@@ -203,9 +227,25 @@ assetsRouter.post('/image/gif-reduce', asyncHandler(async (req, res) => {
 
 /** 图片信息 */
 assetsRouter.post('/image/info', asyncHandler(async (req, res) => {
-  const input = resolveInput(req.body)
+  const input = await resolveInput(req.body)
   if (!input) badRequest('需要 assetId 或 url')
   return ok(res, { info: await probe(input.buf) })
+}))
+
+/** 实时预览：应用调整参数，返回 base64 dataURL（不落盘、不建素材） */
+assetsRouter.post('/image/preview', asyncHandler(async (req, res) => {
+  const input = await resolveInput(req.body)
+  if (!input) badRequest('需要 assetId 或 url')
+  const b = req.body ?? {}
+  const out = await adjustBuffer(input.buf, b)
+  const fmt = str(b.outputExt, 'png')
+  let buf = out
+  let mime = 'image/png'
+  if (fmt === 'jpeg' || fmt === 'jpg') { buf = await sharp(out).jpeg({ quality: 90, mozjpeg: true }).toBuffer(); mime = 'image/jpeg' }
+  else if (fmt === 'webp') { buf = await sharp(out).webp({ quality: 90 }).toBuffer(); mime = 'image/webp' }
+  else buf = await sharp(out).png().toBuffer()
+  const info = await probe(buf)
+  return ok(res, { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, width: info.width, height: info.height })
 }))
 
 /** 生成占位图 */

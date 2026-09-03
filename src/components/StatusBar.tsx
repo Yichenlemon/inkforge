@@ -1,19 +1,20 @@
 import React, { useMemo } from 'react'
-import { CheckCircle2, AlertTriangle, CircleAlert, MousePointerClick, Save } from 'lucide-react'
+import {
+  CheckCircle2, AlertTriangle, CircleAlert, MousePointerClick, Save, Layers, Type, Image as ImageIcon, Smartphone, Monitor, Code2, Loader2,
+} from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
 import { BLOCK_TYPE_LABEL } from '../lib/components.js'
 import type { Block } from '../../shared/types.js'
 
-/**
- * 底部实时编辑状态栏：光标/选区、字数、块数、保存状态、诊断、视图模式
- */
+/** 底部实时编辑状态栏：左 选区 ｜中 统计 ｜右 模式+诊断+保存 */
 export function StatusBar({ diagnostics }: { diagnostics: any[] }) {
   const doc = useDoc((s) => s.doc)
   const dirty = useDoc((s) => s.dirty)
   const saving = useDoc((s) => s.saving)
   const selectedId = useUI((s) => s.selectedId)
   const viewMode = useUI((s) => s.viewMode)
+  const setViewMode = useUI((s) => s.setViewMode)
   const maxWidth = useUI((s) => s.maxWidth)
   const openModal = useUI((s) => s.openModal)
 
@@ -40,44 +41,62 @@ export function StatusBar({ diagnostics }: { diagnostics: any[] }) {
   const errCount = diagnostics.filter((d) => d.level === 'error').length
   const warnCount = diagnostics.filter((d) => d.level === 'warning').length
 
-  return (
-    <div className="h-7 shrink-0 bg-white border-t border-ink-line flex items-center gap-3 px-3 text-[11px] text-ink-text-3 select-none no-print">
-      {/* 选区状态 */}
-      <span className="flex items-center gap-1 shrink-0">
-        <MousePointerClick size={11} />
-        {selBlock
-          ? <>已选中 <b className="text-ink-text-2">{BLOCK_TYPE_LABEL[selBlock.type] ?? selBlock.type}</b>（第 {idx + 1} / {doc.blocks.length} 块）</>
-          : <>未选中区块 · 共 {doc.blocks.length} 块</>}
-      </span>
+  const ViewIcon = viewMode === 'edit' ? Layers : viewMode === 'preview' ? Smartphone : Code2
 
-      <span className="w-px h-3 bg-ink-line" />
+  return (
+    <div className="h-7 shrink-0 bg-[#FAF9F6] border-t border-ink-line flex items-center text-[11px] text-ink-text-3 select-none no-print divide-x divide-ink-line">
+      {/* 选区状态 */}
+      <div className="flex items-center gap-1.5 px-3 min-w-0">
+        <MousePointerClick size={11} className="text-ink-text-3 shrink-0" />
+        {selBlock
+          ? <span className="truncate">已选中 <b className="text-ink-text-2 font-medium">{BLOCK_TYPE_LABEL[selBlock.type] ?? selBlock.type}</b> · 第 {idx + 1} / {doc.blocks.length} 块</span>
+          : <span>未选中 · 共 {doc.blocks.length} 块</span>}
+      </div>
 
       {/* 统计 */}
-      <span className="tabular-nums shrink-0">正文 <b className="text-ink-text-2">{stats.chars.toLocaleString()}</b> 字</span>
-      <span className="tabular-nums shrink-0 hidden-md">图片 <b className="text-ink-text-2">{stats.images}</b></span>
-      <span className="tabular-nums shrink-0 hidden-md">宽 <b className="text-ink-text-2">{maxWidth}</b>px</span>
+      <div className="hidden md:flex items-center gap-3 px-3">
+        <span className="flex items-center gap-1 tabular-nums">
+          <Type size={11} />正文 <b className="text-ink-text-2 font-medium">{stats.chars.toLocaleString()}</b> 字
+        </span>
+        <span className="flex items-center gap-1 tabular-nums">
+          <ImageIcon size={11} /><b className="text-ink-text-2 font-medium">{stats.images}</b> 图
+        </span>
+        <span className="flex items-center gap-1 tabular-nums">
+          画布 <b className="text-ink-text-2 font-medium">{maxWidth}</b>px
+        </span>
+      </div>
 
       <div className="flex-1 min-w-0" />
 
-      {/* 模式 */}
-      <span className="shrink-0 hidden-md">{
-        viewMode === 'edit' ? '编辑模式' : viewMode === 'preview' ? '预览模式' : '源码模式'
-      }</span>
+      {/* 模式切换 */}
+      <div className="flex items-center gap-0.5 px-2">
+        {([['edit', Layers, '编辑'], ['preview', Smartphone, '预览'], ['code', Code2, '源码']] as const).map(([m, Icon, l]) => (
+          <button key={m} onClick={() => setViewMode(m)}
+            title={l}
+            className={`h-5 px-1.5 rounded flex items-center gap-1 text-[10.5px] transition-colors ${
+              viewMode === m ? 'bg-[#2C6BED] text-white' : 'text-ink-text-3 hover:bg-black/[0.06]'}`}>
+            <Icon size={10} /><span className="hidden md:inline">{l}</span>
+          </button>
+        ))}
+      </div>
 
       {/* 诊断 */}
-      <button className="btn btn-ghost btn-xs px-1 shrink-0" title="查看诊断" onClick={() => openModal('export')}>
+      <button className="flex items-center px-2 h-full hover:bg-black/[0.04]" title="查看诊断详情" onClick={() => openModal('export')}>
         {errCount > 0
-          ? <span className="chip bg-[#D64545]/12 text-[#D64545] flex items-center gap-0.5"><CircleAlert size={10} /> {errCount}</span>
+          ? <span className="flex items-center gap-1 text-[#D64545]"><CircleAlert size={11} />{errCount} 错误</span>
           : warnCount > 0
-            ? <span className="chip bg-[#E8A33D]/15 text-[#B7791F] flex items-center gap-0.5"><AlertTriangle size={10} /> {warnCount}</span>
-            : <span className="chip bg-[#1D9E75]/12 text-[#1D9E75] flex items-center gap-0.5"><CheckCircle2 size={10} /> 合规</span>}
+            ? <span className="flex items-center gap-1 text-[#B7791F]"><AlertTriangle size={11} />{warnCount} 警告</span>
+            : <span className="flex items-center gap-1 text-[#1D9E75]"><CheckCircle2 size={11} />合规</span>}
       </button>
 
       {/* 保存状态 */}
-      <span className="flex items-center gap-1 shrink-0 tabular-nums" title={dirty ? '有未保存改动（自动保存约 4 秒）' : '已同步到本地库'}>
-        <Save size={11} />
-        {saving ? '保存中…' : dirty ? '未保存' : '已保存'}
-      </span>
+      <div className="flex items-center gap-1 px-3 min-w-[88px] justify-end" title={dirty ? '有未保存改动（自动保存约 4 秒）' : '已同步到本地库'}>
+        {saving
+          ? <><Loader2 size={11} className="animate-spin text-ink-text-3" /><span>保存中</span></>
+          : dirty
+            ? <><span className="w-1.5 h-1.5 rounded-full bg-[#E8A33D]" /><span>未保存</span></>
+            : <><Save size={11} /><span>已保存</span></>}
+      </div>
     </div>
   )
 }

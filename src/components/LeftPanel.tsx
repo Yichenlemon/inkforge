@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import {
   Search, Plus, Trash2, Upload, LayoutGrid, ListTree, Library, Image as ImageIcon,
-  FileText, Package, Copy, Download, Loader2, RefreshCw, Scissors, Sparkles, Star,
+  FileText, Package, Copy, Download, Loader2, RefreshCw, Scissors, Sparkles, Star, GripVertical,
 } from 'lucide-react'
 import type { Block, AssetRecord } from '../../shared/types.js'
 import { getTheme } from '../../shared/themes.js'
@@ -334,7 +334,9 @@ function AssetsTab() {
   }
 
   const insertIllustration = (svg: string) => {
-    mkInsert({ type: 'svg', data: { svg, bytes: svg.length }, style: { marginTop: 8, marginBottom: 16 } })
+    // 包一层固定尺寸的居中容器，避免插画被画布撑成大块空白
+    const wrapped = `<section style="text-align:center;margin:6px 0;line-height:0"><span style="display:inline-block;width:64px;height:64px;line-height:0">${svg.replace(/<svg /, '<svg width="64" height="64" ')}</span></section>`
+    mkInsert({ type: 'html', data: { html: wrapped }, style: { marginTop: 6, marginBottom: 6 } })
   }
 
   const list = illKw.trim() ? searchIllustrations(illKw) : (ILLUSTRATIONS_BY_CATEGORY.find((g) => g.category === illCat)?.items ?? [])
@@ -364,10 +366,12 @@ function AssetsTab() {
             <input className="input mb-1.5" placeholder="搜索插画…" value={illKw} onChange={(e) => setIllKw(e.target.value)} />
             <div className="grid grid-cols-4 gap-1.5">
               {list.map((il) => (
-                <button key={il.id} title={il.name} onClick={() => insertIllustration(tintIllustration(il.svg, tokens.colorPrimary))}
-                  className="aspect-square rounded-lg border border-ink-line flex items-center justify-center p-1.5 hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04]">
-                  <span className="w-full h-full flex items-center justify-center" style={{ color: tokens.colorPrimary }}
-                    dangerouslySetInnerHTML={{ __html: il.svg }} />
+                <button key={il.id} title={`${il.name}${il.dynamic ? '（动效）' : ''} — 点击插入`}
+                  onClick={() => insertIllustration(tintIllustration(il.svg, tokens.colorPrimary))}
+                  className="group/il aspect-square rounded-lg border border-ink-line flex flex-col items-center justify-center p-1 hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] relative">
+                  <div className="flex-1 w-full flex items-center justify-center text-ink-text" dangerouslySetInnerHTML={{ __html: tintIllustration(il.svg, tokens.colorPrimary) }} />
+                  <div className="text-[9.5px] text-ink-text-3 truncate w-full text-center">{il.name}</div>
+                  {il.dynamic && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#2C6BED]" title="带 SMIL 动效" />}
                 </button>
               ))}
             </div>
@@ -432,16 +436,22 @@ function OnlinePhotos({ onInsert }: { onInsert: (url: string) => void }) {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<'search' | 'random'>('search')
+  const [provider, setProvider] = useState('')
+  const [cat, setCat] = useState('风景')
+
+  const CATS = ['美女', '风景', '动漫', '二次元', '萌宠', '游戏', '汽车', '建筑', '植物', '城市', '人物', '夜景', '静物']
 
   const search = async (p = 1) => {
     setLoading(true)
     try {
-      const r = await onlineApi.photos(q || 'nature', p, 24)
+      const r = await onlineApi.photos(q || '风景', p, 24, 'auto')
       const its: any[] = r.items ?? []
-      if (r.error || !its.length) {
-        const rr = await onlineApi.randomPhotos(q || 'inkforge', 12)
+      setProvider(r.provider ?? '')
+      if (!its.length) {
+        const rr = await onlineApi.randomPhotos(q || '风景', 12, cat)
         setItems(rr.items ?? [])
-        if (r.error) toast('关键词图库暂不可达，已切换为随机优质图', 'error')
+        setProvider(rr.provider ?? 'picsum')
+        toast('关键词图库暂无结果，已切到分类随机图', 'info')
       } else {
         setItems(its)
       }
@@ -450,7 +460,7 @@ function OnlinePhotos({ onInsert }: { onInsert: (url: string) => void }) {
   }
   const random = async () => {
     setLoading(true)
-    try { const r = await onlineApi.randomPhotos(q || 'inkforge', 12); setItems(r.items ?? []) } catch { setItems([]) } finally { setLoading(false) }
+    try { const r = await onlineApi.randomPhotos(cat, 12, cat); setItems(r.items ?? []); setProvider(r.provider ?? '') } catch { setItems([]) } finally { setLoading(false) }
   }
   useEffect(() => { void search(1) }, [])
 
@@ -463,11 +473,21 @@ function OnlinePhotos({ onInsert }: { onInsert: (url: string) => void }) {
               className={`flex-1 h-7 rounded text-[11.5px] ${mode === v ? 'bg-[#2C6BED] text-white' : 'bg-black/[0.05] text-ink-text-2'}`}>{l}</button>
           ))}
         </div>
-        <div className="relative">
-          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-text-3" />
-          <input className="input pl-7" placeholder="搜索图片（Openverse CC0）…" value={q} onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void search(1) }} />
-        </div>
+        {mode === 'random' && (
+          <div className="flex gap-1 overflow-x-auto pb-1 -mb-1">
+            {CATS.map((c) => (
+              <button key={c} onClick={() => { setCat(c); void random() }}
+                className={`chip whitespace-nowrap shrink-0 ${cat === c ? 'bg-[#2C6BED] text-white' : 'bg-black/[0.05] text-ink-text-3'}`}>{c}</button>
+            ))}
+          </div>
+        )}
+        {mode === 'search' && (
+          <div className="relative">
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-text-3" />
+            <input className="input pl-7" placeholder="支持中文：风景、动物、城市…" value={q} onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void search(1) }} />
+          </div>
+        )}
         <button className="btn btn-primary btn-sm w-full" onClick={() => mode === 'random' ? void random() : void search(1)}><Search size={12} /> 搜索</button>
       </div>
       <div className="flex-1 overflow-y-auto p-2.5">
@@ -491,16 +511,17 @@ function OnlinePhotos({ onInsert }: { onInsert: (url: string) => void }) {
         )}
       </div>
       <div className="p-2 border-t border-ink-line text-[10.5px] text-ink-text-3">
-        来源：Openverse（CC0 免费，全球）+ Picsum 兜底。插入为远程链接，正式发布前建议在「我的」上传到微信素材库。
+        来源：{provider || '多源聚合（Openverse 国际 + 每日壁纸 中文 + Picsum 兜底）'}。插入为远程链接，正式发布前建议在「我的」上传到微信素材库。
       </div>
     </div>
   )
 }
 
 function OnlineIcons({ onInsert, tokens }: { onInsert: (svg: string) => void; tokens: any }) {
-  const [q, setQ] = useState('arrow')
+  const [q, setQ] = useState('房子')
   const [icons, setIcons] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const QUICK = ['房子', '爱心', '星星', '火', '太阳', '月亮', '礼物', '购物', '用户', '搜索', '电话', '设置']
   const load = async () => {
     setLoading(true)
     try { const r = await onlineApi.icons(q || 'star', 60); setIcons(r.icons ?? []) } catch { setIcons([]) } finally { setLoading(false) }
@@ -516,9 +537,15 @@ function OnlineIcons({ onInsert, tokens }: { onInsert: (svg: string) => void; to
   return (
     <div className="flex flex-col h-full">
       <div className="p-2.5 border-b border-ink-line space-y-2 shrink-0">
+        <div className="flex gap-1 overflow-x-auto pb-1 -mb-1">
+          {QUICK.map((c) => (
+            <button key={c} onClick={() => { setQ(c); void (async () => { setLoading(true); try { const r = await onlineApi.icons(c, 60); setIcons(r.icons ?? []) } catch { setIcons([]) }; setLoading(false) })() }}
+              className={`chip whitespace-nowrap shrink-0 ${q === c ? 'bg-[#2C6BED] text-white' : 'bg-black/[0.05] text-ink-text-3'}`}>{c}</button>
+          ))}
+        </div>
         <div className="relative">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-text-3" />
-          <input className="input pl-7" placeholder="搜索图标（Iconify）…" value={q} onChange={(e) => setQ(e.target.value)}
+          <input className="input pl-7" placeholder="中文：房子 / 爱心 / 箭头…" value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void load() }} />
         </div>
         <button className="btn btn-primary btn-sm w-full" onClick={() => void load()}><Search size={12} /> 搜索</button>
@@ -555,19 +582,37 @@ function OutlineTab() {
   const selectedId = useUI((s) => s.selectedId)
   const removeBlock = useDoc((s) => s.removeBlock)
   const moveBlockBy = useDoc((s) => s.moveBlockBy)
+  const moveBlock = useDoc((s) => s.moveBlock)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+
+  const onDrop = (targetId: string) => {
+    if (dragId && dragId !== targetId) moveBlock(dragId, doc.blocks.findIndex((b) => b.id === targetId))
+    setDragId(null)
+    setOverId(null)
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-2">
+      <div className="text-[10.5px] text-ink-text-3 px-1 pb-1.5">拖动手柄可排序 · 点击定位到区块</div>
       {doc.blocks.map((b, i) => (
         <div key={b.id}
-          className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer group ${
+          draggable
+          onDragStart={() => setDragId(b.id)}
+          onDragOver={(e) => { e.preventDefault(); setOverId(b.id) }}
+          onDrop={() => onDrop(b.id)}
+          onDragEnd={() => { setDragId(null); setOverId(null) }}
+          className={`group flex items-center gap-1.5 px-1.5 py-1.5 rounded cursor-pointer ${
+            dragId === b.id ? 'opacity-40' : ''
+          } ${overId === b.id && dragId !== b.id ? 'ring-1 ring-[#2C6BED]' : ''} ${
             selectedId === b.id ? 'bg-[#2C6BED]/10 text-[#2C6BED]' : 'hover:bg-black/[0.04]'}`}
           onClick={() => select(b.id)}>
-          <span className="text-[10.5px] text-ink-text-3 w-4 text-right shrink-0">{i + 1}</span>
+          <GripVertical size={12} className="text-ink-text-3 shrink-0 cursor-grab opacity-0 group-hover:opacity-100" />
+          <span className="w-5 h-5 shrink-0 rounded-full bg-black/[0.06] text-[10px] font-semibold flex items-center justify-center text-ink-text-2 tabular-nums">{i + 1}</span>
           <span className="text-[12px] truncate flex-1">{outlineLabel(b)}</span>
-          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" onClick={(e) => { e.stopPropagation(); moveBlockBy(b.id, -1) }}>↑</button>
-          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" onClick={(e) => { e.stopPropagation(); moveBlockBy(b.id, 1) }}>↓</button>
-          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" onClick={(e) => { e.stopPropagation(); removeBlock(b.id) }}>
+          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" title="上移" onClick={(e) => { e.stopPropagation(); moveBlockBy(b.id, -1) }}>↑</button>
+          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" title="下移" onClick={(e) => { e.stopPropagation(); moveBlockBy(b.id, 1) }}>↓</button>
+          <button className="btn btn-ghost btn-xs px-0.5 hidden group-hover:flex" title="删除" onClick={(e) => { e.stopPropagation(); removeBlock(b.id) }}>
             <Trash2 size={11} />
           </button>
         </div>

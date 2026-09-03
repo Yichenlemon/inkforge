@@ -857,7 +857,7 @@ export function SvgView({ block, data, tokens }: BlockViewProps<SvgData>) {
 
   return (
     <div>
-      <div className="rounded-lg border border-ink-line overflow-hidden bg-white p-3 text-center"
+      <div className="rounded-lg border border-ink-line overflow-hidden bg-white py-2 px-2 text-center max-h-48 flex items-center justify-center"
         dangerouslySetInnerHTML={{ __html: rendered }} />
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         <span className="chip bg-black/[0.05] text-ink-text-3">{(data.bytes ?? data.svg.length)} B</span>

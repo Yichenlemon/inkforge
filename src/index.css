@@ -3,12 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --ink-line: #E8E6E0;
-  --ink-line-strong: #D3D1C7;
-  --ink-text: #2C2C2A;
-  --ink-text-2: #5F5E5A;
-  --ink-text-3: #888780;
-  --ink-accent: #2C6BED;
+  --ink-bg: 250 250 248;
+  --ink-surface: 255 255 255;
+  --ink-line: 232 230 224;
+  --ink-line-strong: 211 209 199;
+  --ink-text: 44 44 42;
+  --ink-text-2: 95 94 90;
+  --ink-text-3: 136 135 128;
+  --ink-accent: 44 107 237;
   color-scheme: light;
 }
 
@@ -20,8 +22,8 @@ html, body, #root {
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background: #FAFAF8;
-  color: var(--ink-text);
+  background: rgb(var(--ink-bg));
+  color: rgb(var(--ink-text));
   -webkit-font-smoothing: antialiased;
   font-size: 13px;
 }
@@ -29,9 +31,39 @@ body {
 * { box-sizing: border-box; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #D8D6CF; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #BFBDB4; }
+::-webkit-scrollbar-thumb { background: rgb(var(--ink-line-strong)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--ink-text-3)); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ------------------------------------------------------------------ */
+/* 主题：纸张（暖色）/ 暗色（仅作用编辑区外壳，正文预览保持公众号浅色）     */
+/* ------------------------------------------------------------------ */
+.theme-paper {
+  --ink-bg: 244 240 232;
+  --ink-surface: 255 252 245;
+  --ink-line: 225 219 207;
+  --ink-line-strong: 209 201 185;
+  --ink-text: 49 43 37;
+  --ink-text-2: 112 102 90;
+  --ink-text-3: 152 140 124;
+}
+
+.theme-dark {
+  --ink-bg: 21 21 27;
+  --ink-surface: 30 30 37;
+  --ink-line: 49 49 58;
+  --ink-line-strong: 66 66 77;
+  --ink-text: 233 233 230;
+  --ink-text-2: 173 173 170;
+  --ink-text-3: 132 132 129;
+  color-scheme: dark;
+}
+
+/* 暗色下把纯白面板映射为深色表面（文章正文预览除外，本身即浅色） */
+.theme-dark .bg-white { background-color: rgb(var(--ink-surface)); }
+.theme-dark .border-ink-line { border-color: rgb(var(--ink-line)); }
+.theme-dark .text-ink-text-3 { color: rgb(var(--ink-text-3)); }
+.theme-dark .section-title { color: rgb(var(--ink-text-3)); }
 
 @layer components {
   .btn {
@@ -40,7 +72,8 @@ body {
   }
   .btn-ghost { @apply text-ink-text-2 hover:bg-black/[0.055] hover:text-ink-text; }
   .btn-soft { @apply bg-black/[0.045] text-ink-text-2 hover:bg-black/[0.075]; }
-  .btn-primary { @apply bg-[#2C6BED] text-white hover:bg-[#2559c9]; }
+  .btn-primary { @apply text-white; background-color: rgb(var(--ink-accent)); }
+  .btn-primary:hover { background-color: color-mix(in srgb, rgb(var(--ink-accent)) 88%, black); }
   .btn-danger { @apply bg-[#D64545] text-white hover:bg-[#c03a3a]; }
   .btn-sm { @apply h-6 px-2 text-[12px]; }
   .btn-xs { @apply h-5 px-1.5 text-[11px]; }
@@ -48,15 +81,15 @@ body {
   .input {
     @apply h-7 w-full rounded-md border border-ink-line bg-white px-2 text-[12.5px] text-ink-text
       outline-none transition-colors placeholder:text-ink-text-3
-      focus:border-[#2C6BED] focus:ring-2 focus:ring-[#2C6BED]/15;
+      focus:border-[rgb(var(--ink-accent))] focus:ring-2 focus:ring-[rgb(var(--ink-accent))]/15;
   }
   .textarea {
     @apply w-full rounded-md border border-ink-line bg-white px-2 py-1.5 text-[12.5px] text-ink-text
-      outline-none resize-y transition-colors focus:border-[#2C6BED] focus:ring-2 focus:ring-[#2C6BED]/15;
+      outline-none resize-y transition-colors focus:border-[rgb(var(--ink-accent))] focus:ring-2 focus:ring-[rgb(var(--ink-accent))]/15;
   }
   .select {
     @apply h-7 rounded-md border border-ink-line bg-white px-1.5 text-[12.5px] text-ink-text
-      outline-none focus:border-[#2C6BED];
+      outline-none focus:border-[rgb(var(--ink-accent))];
   }
   .panel { @apply bg-white border border-ink-line rounded-lg; }
   .label { @apply text-[11px] font-medium text-ink-text-3 uppercase tracking-wide; }
@@ -78,15 +111,15 @@ body {
   transition: box-shadow .12s, background-color .12s;
 }
 .canvas-block:hover {
-  box-shadow: 0 0 0 1px rgba(44, 107, 237, .18);
+  box-shadow: 0 0 0 1px rgb(var(--ink-accent) / .18);
 }
 .canvas-block.is-selected {
-  box-shadow: 0 0 0 2px rgba(44, 107, 237, .55);
-  background-color: rgba(44, 107, 237, .025);
+  box-shadow: 0 0 0 2px rgb(var(--ink-accent) / .55);
+  background-color: rgb(var(--ink-accent) / .025);
 }
 .canvas-block.is-dragging { opacity: .45; }
-.canvas-block.is-dropping-before { box-shadow: 0 -2px 0 0 rgba(44, 107, 237, .7); }
-.canvas-block.is-dropping-after { box-shadow: 0 2px 0 0 rgba(44, 107, 237, .7); }
+.canvas-block.is-dropping-before { box-shadow: 0 -2px 0 0 rgb(var(--ink-accent) / .7); }
+.canvas-block.is-dropping-after { box-shadow: 0 2px 0 0 rgb(var(--ink-accent) / .7); }
 
 .block-handle {
   position: absolute;
@@ -116,7 +149,7 @@ body {
 .ProseMirror { outline: none; min-height: 1.4em; }
 .ProseMirror p { margin: 0; }
 .ProseMirror-focused { outline: none; }
-.ProseMirror ::selection { background: rgba(44, 107, 237, .22); }
+.ProseMirror ::selection { background: rgb(var(--ink-accent) / .22); }
 
 .preview-scroll { -webkit-overflow-scrolling: touch; }
 
@@ -137,7 +170,7 @@ body {
 
 /* 代码编辑器 */
 .cm-editor { font-size: 12.5px; }
-.cm-editor.cm-focused { outline: 1px solid #2C6BED; }
+.cm-editor.cm-focused { outline: 1px solid rgb(var(--ink-accent)); }
 
 /* 手机预览框 —— 拆成状态栏 / 公众号栏 / 正文 / Home indicator，刘海只浮在状态栏 */
 .phone-frame {
@@ -296,7 +329,7 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 3px;
-  background: #2C6BED;
+  background: rgb(var(--ink-accent));
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0,0,0,.25);
   cursor: nwse-resize;
@@ -313,7 +346,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: #2C6BED;
+  background: rgb(var(--ink-accent));
   color: #fff;
   box-shadow: 0 1px 4px rgba(0,0,0,.25);
   cursor: grab;
