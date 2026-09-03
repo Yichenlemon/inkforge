@@ -12,10 +12,47 @@ import SubscriptExt from '@tiptap/extension-subscript'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link2, Link2Off,
   Palette, Highlighter, RemoveFormatting, Superscript, Subscript, Paintbrush, Smile,
+  ALargeSmall, ChevronDown, AlignLeft, Plus, Minus, Indent, Layers,
 } from 'lucide-react'
 import { ColorField, toast } from '../lib/ui.js'
+import { useDoc } from '../store/useDoc.js'
+import { useUI } from '../store/useUI.js'
+import { makeBlock } from '../../shared/types.js'
 
 const HIGHLIGHT_COLORS = ['#FFF3B0', '#FFD9D9', '#D9F2E6', '#DCE8FF', '#EFDCFF', '#FFE7CC', 'transparent']
+
+/** TextStyle v2 无 fontSize/letterSpacing 属性，这里扩展 mark */
+const StyledText = TextStyle.extend({
+  addAttributes() {
+    return {
+      ...(this.parent as any)?.(),
+      fontSize: {
+        default: null as string | null,
+        parseHTML: (el: HTMLElement) => el.style.fontSize ?? null,
+        renderHTML: (attrs: any) => (attrs.fontSize ? { style: `font-size:${attrs.fontSize}` } : {}),
+      },
+      letterSpacing: {
+        default: null as string | null,
+        parseHTML: (el: HTMLElement) => el.style.letterSpacing ?? null,
+        renderHTML: (attrs: any) => (attrs.letterSpacing ? { style: `letter-spacing:${attrs.letterSpacing}` } : {}),
+      },
+    }
+  },
+})
+
+const FONT_PRESETS = [12, 13, 14, 15, 16, 17, 18, 20, 24]
+const RECENT_COLORS_KEY = 'inkforge-recent-colors'
+function pushRecentColor(c: string) {
+  try {
+    const list: string[] = JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) ?? '[]')
+    const next = [c, ...list.filter((x) => x !== c)].slice(0, 8)
+    localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(next))
+    return next
+  } catch { return [c] }
+}
+function getRecentColors(): string[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) ?? '[]') } catch { return [] }
+}
 
 /* ------------------------------------------------------------------ */
 /* 格式刷（规格 #49）：提取选区样式，刷到其他文本；再次点击取消            */
@@ -116,7 +153,7 @@ export function RichEditor({
       SuperscriptExt,
       SubscriptExt,
       Underline,
-      TextStyle,
+      StyledText,
       Color,
       TiptapLink.configure({ openOnClick: false, autolink: true, protocols: ['http', 'https', 'mailto'] }),
       Placeholder.configure({ placeholder: placeholder ?? '输入内容…' }),
@@ -212,19 +249,30 @@ export function RichEditor({
 
 function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: string) => void }) {
   const [, force] = useState(0)
-  const [showColors, setShowColors] = useState<'color' | 'highlight' | null>(null)
-  const [showEmoji, setShowEmoji] = useState(false)
+  const [menu, setMenu] = useState<'color' | 'highlight' | 'font' | 'para' | 'insert' | 'emoji' | null>(null)
   const [brush, setBrushState] = useState<BrushStyle | null>(formatBrush.get())
+  const [recentColors, setRecentColors] = useState<string[]>(getRecentColors())
 
   useEffect(() => {
     const rerender = () => force((n) => n + 1)
     editor.on('selectionUpdate', rerender)
     editor.on('transaction', rerender)
     const unsub = formatBrush.subscribe(() => setBrushState(formatBrush.get()))
-    return () => { editor.off('selectionUpdate', rerender); editor.off('transaction', rerender); unsub() }
+    const close = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (!t.closest('.bb-popover') && !t.closest('.bb-trigger')) setMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => {
+      editor.off('selectionUpdate', rerender)
+      editor.off('transaction', rerender)
+      document.removeEventListener('mousedown', close)
+      unsub()
+    }
   }, [editor])
 
   const run = (fn: (ed: Editor) => void) => { fn(editor); onChange(editor.getHTML()) }
+  const toggleMenu = (m: typeof menu) => setMenu(menu === m ? null : m)
 
   const toggleBrush = () => {
     if (brush) { formatBrush.set(null); return }
@@ -247,9 +295,63 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
     return () => { editor.off('selectionUpdate', onSel) }
   }, [brush, editor, onChange])
 
+  /* --- 字号（行内 mark） --- */
+  const curFontSize = () => {
+    const v = editor.getAttributes('textStyle').fontSize as string | undefined
+    const m = v?.match(/([\d.]+)/)
+    return m ? parseFloat(m[1]) : null
+  }
+  const setFontSize = (px: number | null) => {
+    run((e) => e.chain().focus().setMark('textStyle', { fontSize: px ? `${px}px` : null }).run())
+  }
+  const stepFontSize = (delta: number) => {
+    const cur = curFontSize() ?? 15
+    setFontSize(Math.min(48, Math.max(10, Math.round(cur + delta))))
+  }
+
+  /* --- 段落（块级样式，落在 block.style 上） --- */
+  const patchBlockStyle = (patch: Record<string, any>) => {
+    const id = useUI.getState().selectedId
+    const ds = useDoc.getState()
+    if (!id) { toast('未选中区块', 'error'); return }
+    const b = ds.doc.blocks.find((x) => x.id === id)
+    if (!b) return
+    ds.updateBlock(id, { style: { ...b.style, ...patch } })
+  }
+  const getBlockStyle = () => {
+    const id = useUI.getState().selectedId
+    return useDoc.getState().doc.blocks.find((x) => x.id === id)?.style ?? {}
+  }
+
+  /* --- 插入区块（上 / 下 / 叠加层级） --- */
+  const insertSibling = (where: 'above' | 'below', block: any) => {
+    const id = useUI.getState().selectedId
+    const ds = useDoc.getState()
+    const idx = ds.doc.blocks.findIndex((b) => b.id === id)
+    if (idx < 0) { toast('未选中区块', 'error'); return }
+    ds.insertBlocks([block], where === 'above' ? idx : idx + 1)
+    setMenu(null)
+    toast('已插入')
+  }
+  const insertOverlay = (z: number) => {
+    const id = useUI.getState().selectedId
+    const ds = useDoc.getState()
+    const idx = ds.doc.blocks.findIndex((b) => b.id === id)
+    if (idx < 0) { toast('未选中区块', 'error'); return }
+    const label = z >= 99 ? '置顶层' : z <= 0 ? '置底层' : '普通层'
+    const overlay = makeBlock('html', {
+      html: `<section style="position:absolute;top:6px;right:6px;z-index:${z};background:#D64545;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;letter-spacing:1px;">${label}角标</section>`,
+    }, { marginTop: 0, marginBottom: 0, customCss: 'position:relative' })
+    ds.insertBlocks([overlay], idx + 1)
+    setMenu(null)
+    toast(`已插入叠加元素（${label}）`)
+  }
+
   const { from, to } = editor.state.selection
   const empty = from === to
   if (empty && !editor.isFocused) return null
+
+  const st = getBlockStyle()
 
   return (
     <div className="relative">
@@ -263,10 +365,23 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         <TBtn active={editor.isActive('subscript')} title="下标" onClick={() => run((e) => e.chain().focus().toggleSubscript().run())}><Subscript size={13} /></TBtn>
 
         <Sep />
-        <TBtn title="文字颜色" active={showColors === 'color'} onClick={() => setShowColors(showColors === 'color' ? null : 'color')}>
+        <TBtn className="bb-trigger" title="字号" active={menu === 'font'} onClick={() => toggleMenu('font')}>
+          <span className="flex items-center"><span className="text-[12px] font-semibold">A</span><ChevronDown size={9} /></span>
+        </TBtn>
+        <TBtn title="字号 +1" onClick={() => stepFontSize(1)}><span className="flex items-center"><Plus size={10} /><span className="text-[11.5px] font-semibold">A</span></span></TBtn>
+        <TBtn title="字号 −1" onClick={() => stepFontSize(-1)}><span className="flex items-center"><Minus size={10} /><span className="text-[11.5px] font-semibold">A</span></span></TBtn>
+        <TBtn className="bb-trigger" title="段落（行高 / 字间距 / 首行缩进）" active={menu === 'para'} onClick={() => toggleMenu('para')}>
+          <span className="flex items-center"><AlignLeft size={13} /><ChevronDown size={9} /></span>
+        </TBtn>
+
+        <Sep />
+        <TBtn className="bb-trigger" title="插入（嵌套 / 区块 / 叠加层级）" active={menu === 'insert'} onClick={() => toggleMenu('insert')}>
+          <span className="flex items-center"><Plus size={13} /><ChevronDown size={9} /></span>
+        </TBtn>
+        <TBtn className="bb-trigger" title="文字颜色" active={menu === 'color'} onClick={() => toggleMenu('color')}>
           <Palette size={13} />
         </TBtn>
-        <TBtn title="背景高亮" active={showColors === 'highlight'} onClick={() => setShowColors(showColors === 'highlight' ? null : 'highlight')}>
+        <TBtn className="bb-trigger" title="背景高亮" active={menu === 'highlight'} onClick={() => toggleMenu('highlight')}>
           <Highlighter size={13} />
         </TBtn>
 
@@ -279,18 +394,154 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         {editor.isActive('link') && (
           <TBtn title="取消链接" onClick={() => run((e) => e.chain().focus().unsetLink().run())}><Link2Off size={13} /></TBtn>
         )}
-        <Sep />
         <TBtn title="格式刷：提取当前选区样式，再选中其他文字即可刷上" active={!!brush} onClick={toggleBrush}>
           <Paintbrush size={13} />
         </TBtn>
-        <TBtn title="表情 / 符号" active={showEmoji} onClick={() => setShowEmoji(!showEmoji)}>
+        <TBtn className="bb-trigger" title="表情 / 符号" active={menu === 'emoji'} onClick={() => toggleMenu('emoji')}>
           <Smile size={13} />
         </TBtn>
         <TBtn title="清除格式" onClick={() => run((e) => e.chain().focus().unsetAllMarks().clearNodes().run())}><RemoveFormatting size={13} /></TBtn>
       </div>
 
-      {showEmoji && (
-        <div className="absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1 w-64 max-h-40 overflow-y-auto">
+      {/* 字号 */}
+      {menu === 'font' && (
+        <Pop>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[11px] text-ink-text-3">当前 {curFontSize() ?? '默认'}</span>
+            <div className="flex-1" />
+            <button className="btn btn-soft btn-xs" onClick={() => { setFontSize(null); setMenu(null) }}>恢复默认</button>
+          </div>
+          <div className="grid grid-cols-5 gap-1">
+            {FONT_PRESETS.map((px) => (
+              <button key={px} onClick={() => { setFontSize(px); setMenu(null) }}
+                className={`h-7 rounded border text-[11.5px] tabular-nums ${curFontSize() === px ? 'border-[#2C6BED] text-[#2C6BED] font-semibold' : 'border-ink-line hover:border-[#2C6BED]'}`}>
+                {px}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] text-ink-text-3 mt-1.5">超出 12–24px 安全区，微信端可能显示异常。</div>
+        </Pop>
+      )}
+
+      {/* 段落（块级） */}
+      {menu === 'para' && (
+        <Pop>
+          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">行高（本块）</div>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {[1.5, 1.75, 2, 2.5].map((lh) => (
+              <button key={lh} onClick={() => { patchBlockStyle({ lineHeight: lh }); setMenu(null) }}
+                className={`h-7 rounded border text-[11.5px] tabular-nums ${st.lineHeight === lh ? 'border-[#2C6BED] text-[#2C6BED] font-semibold' : 'border-ink-line hover:border-[#2C6BED]'}`}>
+                {lh}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">字间距（本块）</div>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {[0, 0.5, 1, 2].map((ls) => (
+              <button key={ls} onClick={() => { patchBlockStyle({ letterSpacing: ls }); setMenu(null) }}
+                className={`h-7 rounded border text-[11.5px] tabular-nums ${st.letterSpacing === ls ? 'border-[#2C6BED] text-[#2C6BED] font-semibold' : 'border-ink-line hover:border-[#2C6BED]'}`}>
+                {ls}px
+              </button>
+            ))}
+          </div>
+          <button className={`btn btn-xs w-full ${st.customCss?.includes('text-indent') ? 'btn-primary' : 'btn-soft'}`}
+            onClick={() => {
+              const has = st.customCss?.includes('text-indent')
+              const nextCss = has
+                ? (st.customCss!.replace(/text-indent:[^;]+;?/g, '').trim() || undefined)
+                : `${st.customCss ?? ''}text-indent:2em`.trim()
+              patchBlockStyle({ customCss: nextCss })
+              setMenu(null)
+            }}>
+            首行缩进 2em{st.customCss?.includes('text-indent') ? '（取消）' : ''}
+          </button>
+        </Pop>
+      )}
+
+      {/* 插入 */}
+      {menu === 'insert' && (
+        <Pop wide>
+          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 嵌套进当前块</div>
+          <div className="grid grid-cols-3 gap-1 mb-2">
+            <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('·').run()); setMenu(null) }}>间隔点 ·</InsBtn>
+            <InsBtn onClick={() => { run((e) => e.chain().focus().insertContent('\u3000').run()); setMenu(null) }}>全角空格</InsBtn>
+            <InsBtn onClick={() => {
+              const name = window.prompt('变量名（配合片段库变量填充）', '公众号名')
+              if (name) run((e) => e.chain().focus().insertContent(`{{${name}}}`).run())
+              setMenu(null)
+            }}>变量 {'{{}}'}</InsBtn>
+          </div>
+          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1">插入区块（当前块 上方 ↑ / 下方 ↓）</div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
+            <InsBtn onClick={() => insertSibling('above', makeBlock('divider', {}))}>┄ 分割线 ↑</InsBtn>
+            <InsBtn onClick={() => insertSibling('below', makeBlock('divider', {}))}>┄ 分割线 ↓</InsBtn>
+            <InsBtn onClick={() => insertSibling('above', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↑</InsBtn>
+            <InsBtn onClick={() => insertSibling('below', makeBlock('quote', { html: '引用内容', quoteStyle: 'bar' }))}>❝ 引用 ↓</InsBtn>
+            <InsBtn onClick={() => insertSibling('above', makeBlock('paragraph', { html: '' }))}>空段落 ↑</InsBtn>
+            <InsBtn onClick={() => insertSibling('below', makeBlock('paragraph', { html: '' }))}>空段落 ↓</InsBtn>
+            <InsBtn onClick={() => {
+              const url = window.prompt('图片地址（https://…）')
+              if (!url) return
+              insertSibling('below', makeBlock('image', { src: url, alt: '', display: 'block', width: '100%' }))
+            }}>图片链接 ↓</InsBtn>
+            <InsBtn onClick={() => {
+              const url = window.prompt('图片地址（https://…）')
+              if (!url) return
+              const right = window.confirm('确定 = 右浮动（文字环绕），取消 = 左浮动')
+              insertSibling('below', makeBlock('image', { src: url, alt: '', display: right ? 'float-right' : 'float-left', width: '45%' }))
+            }}>浮动图文 ↓</InsBtn>
+          </div>
+          <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 叠加角标（层级选择：压在其他元素上方 / 垫在下方）</div>
+          <div className="grid grid-cols-3 gap-1">
+            <InsBtn onClick={() => insertOverlay(99)}>置顶层 z99</InsBtn>
+            <InsBtn onClick={() => insertOverlay(1)}>普通层 z1</InsBtn>
+            <InsBtn onClick={() => insertOverlay(0)}>置底层 z0</InsBtn>
+          </div>
+        </Pop>
+      )}
+
+      {/* 颜色 */}
+      {menu === 'color' && (
+        <Pop>
+          <ColorField value={editor.getAttributes('textStyle').color} onChange={(c) => {
+            if (c) { run((e) => e.chain().focus().setColor(c).run()); setRecentColors(pushRecentColor(c)) }
+            else run((e) => e.chain().focus().unsetColor().run())
+          }} />
+          {recentColors.length > 0 && (
+            <>
+              <div className="text-[10px] text-ink-text-3 mt-2 mb-1">最近使用</div>
+              <div className="flex gap-1">
+                {recentColors.map((c) => (
+                  <button key={c} title={c} className="w-5 h-5 rounded border border-ink-line" style={{ background: c }}
+                    onClick={() => { run((e) => e.chain().focus().setColor(c).run()); setMenu(null) }} />
+                ))}
+              </div>
+            </>
+          )}
+        </Pop>
+      )}
+
+      {/* 高亮 */}
+      {menu === 'highlight' && (
+        <Pop>
+          <div className="flex gap-1">
+            {HIGHLIGHT_COLORS.map((c) => (
+              <button key={c} title={c}
+                className="w-6 h-6 rounded border border-ink-line"
+                style={{ background: c }}
+                onClick={() => {
+                  if (c === 'transparent') run((e) => e.chain().focus().unsetHighlight().run())
+                  else run((e) => e.chain().focus().setHighlight({ color: c }).run())
+                  setMenu(null)
+                }} />
+            ))}
+          </div>
+        </Pop>
+      )}
+
+      {/* 表情 */}
+      {menu === 'emoji' && (
+        <Pop>
           <div className="grid grid-cols-10 gap-0.5">
             {EMOJI_GROUPS.map(([em, group], i) => (
               <button key={i} title={group}
@@ -300,40 +551,34 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {showColors === 'color' && (
-        <div className="absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1">
-          <ColorField value={editor.getAttributes('textStyle').color} onChange={(c) => {
-            if (c) run((e) => e.chain().focus().setColor(c).run())
-            else run((e) => e.chain().focus().unsetColor().run())
-          }} />
-        </div>
-      )}
-      {showColors === 'highlight' && (
-        <div className="absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1 flex gap-1">
-          {HIGHLIGHT_COLORS.map((c) => (
-            <button key={c} title={c}
-              className="w-6 h-6 rounded border border-ink-line"
-              style={{ background: c }}
-              onClick={() => {
-                if (c === 'transparent') run((e) => e.chain().focus().unsetHighlight().run())
-                else run((e) => e.chain().focus().setHighlight({ color: c }).run())
-                setShowColors(null)
-              }} />
-          ))}
-        </div>
+        </Pop>
       )}
     </div>
   )
 }
 
-function TBtn({ children, onClick, active, title }: { children: React.ReactNode; onClick: () => void; active?: boolean; title?: string }) {
+function TBtn({ children, onClick, active, title, className = '' }: { children: React.ReactNode; onClick: () => void; active?: boolean; title?: string; className?: string }) {
   return (
     <button title={title} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
-      className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+      className={`bb-trigger w-6 h-6 rounded flex items-center justify-center transition-colors ${className} ${
         active ? 'bg-[#2C6BED] text-white' : 'text-ink-text-2 hover:bg-black/[0.06]'}`}>
+      {children}
+    </button>
+  )
+}
+
+function Pop({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className={`bb-popover absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1 ${wide ? 'w-72' : 'w-60'}`}>
+      {children}
+    </div>
+  )
+}
+
+function InsBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button onMouseDown={(e) => e.preventDefault()} onClick={onClick}
+      className="h-7 rounded border border-ink-line text-[11.5px] px-1.5 hover:border-[#2C6BED] hover:text-[#2C6BED] truncate">
       {children}
     </button>
   )

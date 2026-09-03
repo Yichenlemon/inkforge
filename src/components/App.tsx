@@ -21,6 +21,7 @@ import { HistoryPanel } from './HistoryPanel.jsx'
 import { MarkdownDialog } from './MarkdownDialog.jsx'
 import { FindReplaceDialog } from './FindReplaceDialog.jsx'
 import { SettingsDialog } from './SettingsDialog.jsx'
+import { StatusBar } from './StatusBar.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
 import { Modal, ToastHost, toast, copyText } from '../lib/ui.js'
@@ -226,6 +227,9 @@ export default function App() {
         )}
       </div>
       )}
+
+      {/* 底部实时状态栏（仅编辑器页） */}
+      {page === 'editor' && <StatusBar diagnostics={diagnostics} />}
 
       {/* 命令面板提示 */}
       {page === 'editor' && (

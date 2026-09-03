@@ -148,6 +148,24 @@ function SortableBlock({ block, index, tokens, selected, onSelect }: {
     border: block.style.borderWidth ? `${block.style.borderWidth}px ${block.style.borderStyle ?? 'solid'} ${block.style.borderColor ?? '#eee'}` : undefined,
     textAlign: block.style.textAlign,
     opacity: block.style.opacity ?? (block.style.hidden ? 0.4 : 1),
+    /* 文字级样式（悬浮工具栏「段落」组实时生效） */
+    fontSize: block.style.fontSize ? `${block.style.fontSize}px` : undefined,
+    lineHeight: block.style.lineHeight,
+    letterSpacing: block.style.letterSpacing != null ? `${block.style.letterSpacing}px` : undefined,
+    color: block.style.color,
+    fontWeight: block.style.fontWeight as any,
+  }
+
+  /* customCss 逃生舱：编辑态与导出一致（简单 prop:value; 解析） */
+  if (block.style.customCss) {
+    for (const decl of block.style.customCss.split(';')) {
+      const i = decl.indexOf(':')
+      if (i > 0) {
+        const prop = decl.slice(0, i).trim()
+        const val = decl.slice(i + 1).trim()
+        if (prop && val) (style as any)[prop.replace(/-([a-z])/g, (_m, c) => c.toUpperCase())] = val
+      }
+    }
   }
 
   // 浮动图片：让画布内的后续区块正文环绕它（与导出一致）
