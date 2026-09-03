@@ -54,15 +54,22 @@ libraryRouter.get('/yiban', asyncHandler(async (req, res) => {
   const all = loadYiban()
   const q = str(req.query.q).trim().toLowerCase()
   const cat = str(req.query.cat).trim()
+  const idsParam = str(req.query.ids).trim()
   const page = Math.max(1, parseInt(str(req.query.page, '1'), 10) || 1)
   const size = Math.min(60, Math.max(1, parseInt(str(req.query.size, '24'), 10) || 24))
   let filtered = all
-  if (cat && cat !== '全部') filtered = filtered.filter((m) => yibanCat(m) === cat)
-  if (q) {
-    filtered = filtered.filter((m) =>
-      (m.desc && m.desc.toLowerCase().includes(q)) ||
-      (m.tags && m.tags.join('/').toLowerCase().includes(q)) ||
-      (m.detail && m.detail.toLowerCase().includes(q)))
+  if (idsParam) {
+    // 收藏模式：按 id 集合精确取回（跨分页）
+    const want = new Set(idsParam.split(',').map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n)).slice(0, 300))
+    filtered = all.filter((m) => want.has(m.id))
+  } else {
+    if (cat && cat !== '全部') filtered = filtered.filter((m) => yibanCat(m) === cat)
+    if (q) {
+      filtered = filtered.filter((m) =>
+        (m.desc && m.desc.toLowerCase().includes(q)) ||
+        (m.tags && m.tags.join('/').toLowerCase().includes(q)) ||
+        (m.detail && m.detail.toLowerCase().includes(q)))
+    }
   }
   const start = (page - 1) * size
   const items = filtered.slice(start, start + size).map((m) => ({

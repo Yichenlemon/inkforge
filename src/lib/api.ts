@@ -122,8 +122,8 @@ export const libraryApi = {
 }
 
 export const yibanApi = {
-  list: (q = '', page = 1, size = 24, cat = '') =>
-    api.get(`/yiban?q=${encodeURIComponent(q)}&cat=${encodeURIComponent(cat)}&page=${page}&size=${size}`),
+  list: (q = '', page = 1, size = 24, cat = '', ids = '') =>
+    api.get(`/yiban?q=${encodeURIComponent(q)}&cat=${encodeURIComponent(cat)}&ids=${encodeURIComponent(ids)}&page=${page}&size=${size}`),
   categories: () => api.get('/yiban/categories'),
 }
 

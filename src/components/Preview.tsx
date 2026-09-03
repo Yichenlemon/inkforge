@@ -20,23 +20,30 @@ export interface PreviewProps {
 export function Preview(props: PreviewProps) {
   const [device, setDevice] = useState<'phone' | 'desktop'>('phone')
   const [scale, setScale] = useState(1)
+  const [darkSim, setDarkSim] = useState(false)
   const stripAnimation = useUI((s) => s.stripAnimation)
   const setStrip = useUI((s) => s.setStripAnimation)
   const title = useDoc((s) => s.doc?.title?.trim() || '微信公众号')
+  const articleBackground = useDoc((s) => (s.doc?.meta as any)?.articleBackground as string | undefined)
 
   const docHtml = useMemo(() => {
     const body = props.html ?? ''
+    // 深色模式模拟（壹伴「深色模式预览」对标）：页面反色 + 图片二次反色还原
+    const darkCss = darkSim
+      ? `body{background:#111 !important;} #page{filter:invert(1) hue-rotate(180deg);} #page img,#page video,#page iframe{filter:invert(1) hue-rotate(180deg);}`
+      : ''
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <style>
   html,body{margin:0;padding:0;background:#fff;}
   body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',Arial,sans-serif;}
-  #page{max-width:677px;margin:0 auto;padding:16px 16px 60px;overflow-x:hidden;}
+  #page{max-width:677px;margin:0 auto;padding:16px 16px 60px;overflow-x:hidden;${articleBackground ? `background:${articleBackground};` : ''}}
   img{max-width:100% !important;height:auto !important;}
   section{max-width:100% !important;}
   ::-webkit-scrollbar{width:0;height:0;}
+  ${darkCss}
 </style></head><body><div id="page">${body}</div></body></html>`
-  }, [props.html])
+  }, [props.html, darkSim, articleBackground])
 
   return (
     <div className="flex flex-col h-full">
@@ -54,6 +61,7 @@ export function Preview(props: PreviewProps) {
         <button className="btn btn-ghost btn-xs px-1" onClick={() => setScale(1)} title="重置缩放"><RotateCcw size={12} /></button>
         <button className="btn btn-soft btn-sm" onClick={props.onReload}><RefreshCw size={12} /> 重新编译</button>
         <div className="flex-1" />
+        <Toggle2 value={darkSim} onChange={setDarkSim} label="深色模式预览" />
         <Toggle2 value={stripAnimation} onChange={setStrip} label="关闭全部动效" />
       </div>
 

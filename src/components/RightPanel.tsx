@@ -641,6 +641,17 @@ function DocPanel() {
       <Field label="开启留言"><Toggle value={!!meta.needOpenComment} onChange={(v) => setMeta({ needOpenComment: v })} /></Field>
       <Field label="仅粉丝留言"><Toggle value={!!meta.onlyFansCanComment} onChange={(v) => setMeta({ onlyFansCanComment: v })} /></Field>
 
+      <div className="section-title px-0">外观</div>
+      <Field label="文章背景色">
+        <div className="flex items-center gap-2">
+          <ColorField value={(meta as any).articleBackground ?? '#FFFFFF'} onChange={(c) => c && setMeta({ articleBackground: c })} />
+          {(meta as any).articleBackground && (
+            <button className="btn btn-ghost btn-xs" onClick={() => setMeta({ articleBackground: undefined })}>恢复默认</button>
+          )}
+        </div>
+      </Field>
+      <div className="text-[11px] text-ink-text-3 -mt-1 mb-2">整篇底色（编译时写入外层容器，预览同步显示）。浅色文字慎配深底。</div>
+
       <div className="section-title px-0">封面</div>
       <CoverPicker />
     </div>

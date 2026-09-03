@@ -66,7 +66,12 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
   const [result, setResult] = useState<{ changes: string[] } | null>(null)
   const [preview, setPreview] = useState('')
 
-  const apply = async (commit: boolean) => {
+  const apply = async (commit: boolean, override?: { autoSpacing?: boolean; dedupe?: boolean; halfWidth?: boolean }) => {
+    const cfg = {
+      autoSpacing: override?.autoSpacing ?? autoSpacing,
+      dedupe: override?.dedupe ?? dedupe,
+      halfWidth: override?.halfWidth ?? halfWidth,
+    }
     setBusy(true)
     try {
       const next: Block[] = []
@@ -88,7 +93,7 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
         for (const f of fields) {
           if (!d[f]) continue
           const r = await toolsApi.typeset(d[f], {
-            autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth,
+            autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth,
             terms: terms.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
               const [from, to] = l.split(/[=→:]/).map((x) => x.trim())
               return { from, to }
@@ -107,14 +112,14 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
         if (d.items) {
           d.items = await Promise.all(d.items.map(async (it: any) => {
             const o = { ...it }
-            if (it.title) { const r = await toolsApi.typeset(it.title, { autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth }); o.title = r.html; r.changes?.forEach((c: string) => allChanges.add(c)) }
-            if (it.html) { const r = await toolsApi.typeset(it.html, { autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth }); o.html = r.html; r.changes?.forEach((c: string) => allChanges.add(c)) }
+            if (it.title) { const r = await toolsApi.typeset(it.title, { autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth }); o.title = r.html; r.changes?.forEach((c: string) => allChanges.add(c)) }
+            if (it.html) { const r = await toolsApi.typeset(it.html, { autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth }); o.html = r.html; r.changes?.forEach((c: string) => allChanges.add(c)) }
             return o
           }))
         }
         if (d.columns) {
           d.columns = await Promise.all(d.columns.map(async (c: any) => {
-            const r = await toolsApi.typeset(c.html ?? '', { autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth })
+            const r = await toolsApi.typeset(c.html ?? '', { autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth })
             r.changes?.forEach((c2: string) => allChanges.add(c2))
             return { ...c, html: r.html }
           }))
@@ -122,8 +127,8 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
         if (d.panels) {
           d.panels = await Promise.all(d.panels.map(async (p: any) => {
             const o = { ...p }
-            if (p.title) o.title = (await toolsApi.typeset(p.title, { autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth })).html
-            if (p.html) o.html = (await toolsApi.typeset(p.html, { autoSpacing, dedupePunctuation: dedupe, halfWidthAlnum: halfWidth })).html
+            if (p.title) o.title = (await toolsApi.typeset(p.title, { autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth })).html
+            if (p.html) o.html = (await toolsApi.typeset(p.html, { autoSpacing: cfg.autoSpacing, dedupePunctuation: cfg.dedupe, halfWidthAlnum: cfg.halfWidth })).html
             return o
           }))
         }
@@ -138,6 +143,9 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
     } catch (e: any) { toast(e?.message ?? '处理失败', 'error') }
     finally { setBusy(false) }
   }
+
+  /** 壹伴「一键排版」对标：推荐配置（中西文空格 + 合并标点）整篇直接应用 */
+  const oneClick = () => apply(true, { autoSpacing: true, dedupe: true, halfWidth: false })
 
   return (
     <div className="grid grid-cols-[1fr_280px] gap-4">
@@ -159,13 +167,17 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
         </div>
 
         <div className="flex items-center gap-2 mt-3">
+          <button className="btn btn-primary flex-1" disabled={busy} onClick={oneClick}>
+            <Wand2 size={13} /> ⚡ 一键排版（推荐配置，整篇生效）
+          </button>
           <button className="btn btn-soft" disabled={busy} onClick={() => apply(false)}>
             {busy && <Loader2 size={13} className="animate-spin" />} 预览效果
           </button>
-          <button className="btn btn-primary" disabled={busy} onClick={() => apply(true)}>
-            <Wand2 size={13} /> 应用到全文
+          <button className="btn btn-soft" disabled={busy} onClick={() => apply(true)}>
+            按当前勾选应用
           </button>
         </div>
+        <div className="text-[11px] text-ink-text-3 mt-1">一键排版 = 中西文自动空格 + 合并重复标点，跳过全角转换（安全默认）。</div>
 
         {result && (
           <div className="mt-3 rounded-lg bg-[#EDF7F2] px-3 py-2">

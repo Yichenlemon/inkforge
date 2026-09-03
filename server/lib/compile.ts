@@ -59,12 +59,14 @@ export async function compileDoc(doc: Doc, opts: CompileOptions = {}): Promise<C
 
   let out = html
   if (opts.wrap !== false) {
+    // 文章背景（壹伴「添加文章背景」对标）：meta.articleBackground 优先于主题底色
+    const articleBg = (doc.meta as any)?.articleBackground as string | undefined
     const wrapper = [
       `font-size:${tokens.fontSize}px`,
       `color:${tokens.colorText}`,
       `line-height:${tokens.lineHeight}`,
       `letter-spacing:${px(tokens.letterSpacing)}`,
-      `background-color:${tokens.colorBg}`,
+      `background-color:${articleBg || tokens.colorBg}`,
       'word-break:break-word',
       'padding:0',
     ].join(';')
