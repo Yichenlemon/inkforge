@@ -238,7 +238,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: {
     <div className="flex border-b border-ink-line shrink-0 overflow-x-auto">
       {tabs.map((t) => (
         <button key={t.value} onClick={() => onChange(t.value)}
-          className={`flex items-center gap-1 px-3 h-9 text-[12.5px] whitespace-nowrap border-b-2 transition-colors ${
+          className={`flex items-center gap-0.5 px-2 h-9 text-[11.5px] whitespace-nowrap border-b-2 transition-colors ${
             value === t.value ? 'border-[#2C6BED] text-[#2C6BED] font-medium' : 'border-transparent text-ink-text-3 hover:text-ink-text-2'
           }`}>
           {t.icon}{t.label}

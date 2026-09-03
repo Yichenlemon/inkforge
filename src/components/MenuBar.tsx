@@ -87,6 +87,7 @@ export function MenuBar() {
         { label: '导出 Markdown', run: () => { void exportMd(); setOpen(null) } },
         { sep: true },
         { label: '发布到公众号草稿箱', run: () => { ui().openModal('publish'); setOpen(null) } },
+        { label: '全局设置…', run: () => { ui().openModal('settings'); setOpen(null) } },
       ],
     },
     {

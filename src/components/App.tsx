@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   PanelLeft, PanelRight, Undo2, Redo2, Save, Eye, Pencil, Code2,
-  FileDown, Send, CheckCircle2, Search, Loader2, History as HistoryIcon,
+  FileDown, Send, CheckCircle2, Search, Loader2, History as HistoryIcon, Settings as SettingsIcon, FileText,
 } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
@@ -20,6 +20,7 @@ import { CommandPalette } from './CommandPalette.jsx'
 import { HistoryPanel } from './HistoryPanel.jsx'
 import { MarkdownDialog } from './MarkdownDialog.jsx'
 import { FindReplaceDialog } from './FindReplaceDialog.jsx'
+import { SettingsDialog } from './SettingsDialog.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
 import { Modal, ToastHost, toast, copyText } from '../lib/ui.js'
@@ -80,12 +81,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [viewMode, openModal, setViewMode, select])
 
-  /* 自动保存 */
+  /* 自动保存（可在全局设置中关闭） */
+  const autosave = useUI((s) => s.autosave)
   useEffect(() => {
-    if (!dirty) return
+    if (!dirty || !autosave) return
     const t = setTimeout(() => { void save(true) }, 4000)
     return () => clearTimeout(t)
-  }, [dirty])
+  }, [dirty, autosave])
 
   const save = async (silent = false) => {
     try {
@@ -126,6 +128,8 @@ export default function App() {
 
         {/* 应用菜单栏：文件 / 编辑 / 插入 / 视图 / 帮助 */}
         <MenuBar />
+
+        <DocTitle />
 
         <div className="w-px h-5 bg-ink-line mx-1" />
 
@@ -175,6 +179,9 @@ export default function App() {
         </button>
 
         <div className="w-px h-5 bg-ink-line mx-0.5" />
+        <button className="btn btn-ghost btn-sm px-1.5" onClick={() => openModal('settings')} title="全局设置">
+          <SettingsIcon size={14} />
+        </button>
         <button className="btn btn-ghost btn-sm px-1.5" onClick={toggleRight} title="右侧面板">
           <PanelRight size={15} />
         </button>
@@ -240,7 +247,76 @@ export default function App() {
       <HistoryPanel />
       <MarkdownDialog />
       <FindReplaceDialog />
+      <SettingsDialog />
       <ToastHost />
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 顶栏文件名：默认「标题 + 时间」，悬停显示详情，点击重命名                 */
+/* ------------------------------------------------------------------ */
+
+function DocTitle() {
+  const doc = useDoc((s) => s.doc)
+  const setTitle = useDoc((s) => s.setTitle)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const isDefault = !doc.title?.trim() || doc.title === '未命名文章'
+  const time = new Date(doc.createdAt ?? Date.now())
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const timeTag = isDefault ? ` ${pad(time.getMonth() + 1)}${pad(time.getDate())}-${pad(time.getHours())}${pad(time.getMinutes())}` : ''
+  const displayName = (isDefault ? '未命名文章' : doc.title) + timeTag
+
+  const stats = useMemo(() => {
+    const plain = doc.blocks.map((b) => {
+      const d = b.data as any
+      return typeof d?.html === 'string' ? d.html : ''
+    }).join(' ').replace(/<[^>]+>/g, '')
+    return { chars: plain.replace(/\s/g, '').length, blocks: doc.blocks.length }
+  }, [doc.blocks])
+
+  const commit = () => {
+    const t = draft.trim()
+    if (t) setTitle(t)
+    setEditing(false)
+  }
+
+  return (
+    <div className="relative group ml-1 min-w-0">
+      {editing ? (
+        <input autoFocus className="input h-7 w-56 text-[12.5px]" value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') setEditing(false)
+          }} />
+      ) : (
+        <button className="flex items-center gap-1.5 max-w-[280px] px-2 h-8 rounded-md hover:bg-black/[0.05] transition-colors"
+          onClick={() => { setDraft(isDefault ? '' : doc.title); setEditing(true) }}
+          title="点击重命名">
+          <FileText size={13} className="text-ink-text-3 shrink-0" />
+          <span className="text-[13px] font-medium truncate">{displayName}</span>
+          <span className="w-1 h-1 rounded-full shrink-0" style={{ background: useDoc((s) => s.dirty) ? '#E8A33D' : 'transparent' }} title={useDoc((s) => s.dirty) ? '未保存' : ''} />
+        </button>
+      )}
+
+      {/* 悬停详情卡片 */}
+      {!editing && (
+        <div className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover:block w-64 bg-white rounded-lg border border-ink-line shadow-xl p-3">
+          <div className="text-[12.5px] font-semibold mb-1.5 truncate">{displayName}</div>
+          <div className="grid grid-cols-2 gap-y-1 text-[11.5px] text-ink-text-2">
+            <span className="text-ink-text-3">区块数</span><span className="tabular-nums">{stats.blocks}</span>
+            <span className="text-ink-text-3">正文字数</span><span className="tabular-nums">{stats.chars.toLocaleString()}</span>
+            <span className="text-ink-text-3">创建时间</span><span>{time.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="text-ink-text-3">最近修改</span><span>{new Date(doc.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="text-ink-text-3">文档 ID</span><span className="font-mono text-[10.5px]">{doc.id}</span>
+          </div>
+          <div className="text-[10.5px] text-[#2C6BED] mt-2">点击文件名可重命名</div>
+        </div>
+      )}
     </div>
   )
 }

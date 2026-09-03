@@ -37,6 +37,8 @@ interface UIState {
   isNarrow: boolean
   stripAnimation: boolean
   maxWidth: number
+  /** 自动保存（全局设置，localStorage 持久化） */
+  autosave: boolean
   modals: ModalState
 
   setLeftTab: (t: LeftTab) => void
@@ -50,11 +52,23 @@ interface UIState {
   setNarrow: (v: boolean) => void
   setStripAnimation: (v: boolean) => void
   setMaxWidth: (v: number) => void
+  setAutosave: (v: boolean) => void
   openModal: (k: keyof ModalState) => void
   closeModal: (k: keyof ModalState) => void
 }
 
-export const useUI = create<UIState>((set) => ({
+/** 全局设置持久化：读 localStorage 合并初始值 */
+function loadPersisted(): { stripAnimation?: boolean; maxWidth?: number; autosave?: boolean } {
+  try { return JSON.parse(localStorage.getItem('inkforge-settings') ?? '{}') } catch { return {} }
+}
+
+function persist(s: { stripAnimation: boolean; maxWidth: number; autosave: boolean }) {
+  try { localStorage.setItem('inkforge-settings', JSON.stringify({ stripAnimation: s.stripAnimation, maxWidth: s.maxWidth, autosave: s.autosave })) } catch { /* ignore */ }
+}
+
+const persisted = loadPersisted()
+
+export const useUI = create<UIState>((set, get) => ({
   leftTab: 'components',
   rightTab: 'block',
   viewMode: 'edit',
@@ -64,8 +78,9 @@ export const useUI = create<UIState>((set) => ({
   leftOpen: true,
   rightOpen: true,
   isNarrow: false,
-  stripAnimation: false,
-  maxWidth: 677,
+  stripAnimation: persisted.stripAnimation ?? false,
+  maxWidth: persisted.maxWidth ?? 677,
+  autosave: persisted.autosave ?? true,
   modals: {
     export: false, publish: false, diagnostics: false, tools: false, imageEditor: false,
     lottie: false, anim: false, docs: false, command: false, import: false, settings: false, cover: false,
@@ -81,8 +96,9 @@ export const useUI = create<UIState>((set) => ({
   toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
   toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
   setNarrow: (v) => set((s) => ({ isNarrow: v, leftOpen: v ? false : s.leftOpen, rightOpen: v ? false : s.rightOpen })),
-  setStripAnimation: (v) => set({ stripAnimation: v }),
-  setMaxWidth: (v) => set({ maxWidth: v }),
+  setStripAnimation: (v) => { set({ stripAnimation: v }); persist({ ...get(), stripAnimation: v }) },
+  setMaxWidth: (v) => { set({ maxWidth: v }); persist({ ...get(), maxWidth: v }) },
+  setAutosave: (v) => { set({ autosave: v }); persist({ ...get(), autosave: v }) },
   openModal: (k) => set((s) => ({ modals: { ...s.modals, [k]: true } })),
   closeModal: (k) => set((s) => ({ modals: { ...s.modals, [k]: false } })),
 }))
