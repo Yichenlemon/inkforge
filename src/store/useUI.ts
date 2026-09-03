@@ -20,6 +20,7 @@ export interface ModalState {
   cover: boolean
   history: boolean
   markdown: boolean
+  findReplace: boolean
 }
 
 interface UIState {
@@ -68,7 +69,7 @@ export const useUI = create<UIState>((set) => ({
   modals: {
     export: false, publish: false, diagnostics: false, tools: false, imageEditor: false,
     lottie: false, anim: false, docs: false, command: false, import: false, settings: false, cover: false,
-    history: false, markdown: false,
+    history: false, markdown: false, findReplace: false,
   },
 
   setLeftTab: (t) => set((s) => ({ leftTab: t, leftOpen: true })),

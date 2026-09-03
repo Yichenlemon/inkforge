@@ -93,6 +93,7 @@ export function MenuBar() {
       key: 'edit', label: '编辑', items: [
         { label: '撤销', hint: '⌘Z', run: () => { ds().undo(); setOpen(null) } },
         { label: '重做', hint: '⌘⇧Z', run: () => { ds().redo(); setOpen(null) } },
+        { label: '查找与替换…', hint: '⌘F', run: () => { ui().openModal('findReplace'); setOpen(null) } },
         { label: '历史记录（跳转到任意步骤）', run: () => { ui().openModal('history'); setOpen(null) } },
         { sep: true },
         { label: '复制选中区块', run: withSelected((id) => ds().duplicateBlock(id)) },

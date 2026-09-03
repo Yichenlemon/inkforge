@@ -97,6 +97,7 @@ export const toolsApi = {
   typeset: (html: string, opts: any) => api.post('/tools/typeset', { html, ...opts }),
   check: (text: string, digestLength = 100) => api.post('/tools/check', { text, digestLength }),
   case: (text: string, mode: string) => api.post('/tools/case', { text, mode }),
+  quote: (html: string, mode: string) => api.post('/tools/quote', { html, mode }),
   spacing: (text: string) => api.post('/tools/spacing', { text }),
   width: (text: string, mode: string) => api.post('/tools/width', { text, mode }),
   orphan: (text: string) => api.post('/tools/orphan', { text }),

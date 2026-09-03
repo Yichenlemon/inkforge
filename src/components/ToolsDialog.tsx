@@ -202,6 +202,30 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
           ))}
         </div>
 
+        <div className="label mb-1.5">引号规范化</div>
+        <div className="grid grid-cols-3 gap-1.5 mb-4">
+          {([['corner', '直角「」'], ['curly', '弯引号“”'], ['straight', '直引号"'] ] as const).map(([m, label]) => (
+            <button key={m} className="btn btn-soft btn-sm" disabled={busy} onClick={async () => {
+              setBusy(true)
+              try {
+                const next = await Promise.all(blocks.map(async (b) => {
+                  const d = b.data as any
+                  const map: any = { ...d }
+                  for (const f of ['html', 'title', 'footer']) {
+                    if (typeof map[f] === 'string' && map[f]) {
+                      map[f] = (await toolsApi.quote(map[f], m)).html
+                    }
+                  }
+                  return { ...b, data: map }
+                }))
+                onApply(next)
+                toast('引号已规范', 'success')
+              } catch (e: any) { toast(e?.message ?? '处理失败', 'error') }
+              finally { setBusy(false) }
+            }}>{label}</button>
+          ))}
+        </div>
+
         <div className="label mb-1.5">预览（第一个文本块）</div>
         <div className="rounded-lg border border-ink-line p-2.5 text-[12.5px] min-h-[120px] leading-relaxed"
           dangerouslySetInnerHTML={{ __html: preview || '<span style="color:#999">点「预览效果」后显示</span>' }} />
@@ -343,7 +367,45 @@ function ColorTab() {
   const [bg, setBg] = useState('#FFFFFF')
   const [scheme, setScheme] = useState<any>(null)
   const [contrast, setContrast] = useState<any>(null)
+  const [fromColor, setFromColor] = useState('#B08A4A')
+  const [toColor, setToColor] = useState('#2C6BED')
   const setToken = useDoc((s) => s.setToken)
+  const doc = useDoc((s) => s.doc)
+  const replaceBlocks = useDoc((s) => s.replaceBlocks)
+
+  /** 全篇颜色替换（M16 #405）：把文档里所有等于 from 的颜色换成 to */
+  const applyRecolor = () => {
+    const norm = (c: string): string | null => {
+      const s = c.trim().toLowerCase()
+      const hex = s.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/)
+      if (hex) {
+        let h = hex[1]
+        if (h.length === 3) h = h.split('').map((x) => x + x).join('')
+        return '#' + h
+      }
+      const rgb = s.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (rgb) return '#' + [1, 2, 3].map((i) => Number(rgb[i]).toString(16).padStart(2, '0')).join('')
+      return null
+    }
+    const fromN = norm(fromColor)
+    const toN = norm(toColor)
+    if (!fromN || !toN) { toast('颜色格式无效', 'error'); return }
+    const re = /(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|rgba?\([^)]*\))/g
+    let n = 0
+    const swap = (str: string) => str.replace(re, (m) => (norm(m) === fromN ? (n++, toN) : m))
+    const walk = (v: any): any => {
+      if (typeof v === 'string') return swap(v)
+      if (Array.isArray(v)) return v.map(walk)
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+      return v
+    }
+    const next = doc.blocks.map((b) => {
+      const nd = walk(JSON.parse(JSON.stringify(b.data)))
+      return nd === b.data ? b : { ...b, data: nd }
+    })
+    replaceBlocks(next)
+    toast(n ? `已替换 ${n} 处颜色` : '没有找到匹配的颜色', n ? 'success' : 'error')
+  }
 
   const refresh = async () => {
     const [s, c] = await Promise.all([toolsApi.colorScheme(base), toolsApi.contrast(fg, bg)])
@@ -353,6 +415,17 @@ function ColorTab() {
   return (
     <div className="grid grid-cols-[1fr_300px] gap-4">
       <div>
+        <div className="rounded-lg border border-ink-line p-3 mb-4">
+          <div className="text-[13px] font-semibold mb-2">全篇颜色替换</div>
+          <div className="flex items-end gap-2">
+            <Field label="原颜色"><ColorField value={fromColor} onChange={(v) => v && setFromColor(v)} /></Field>
+            <div className="pb-2 text-ink-text-3">→</div>
+            <Field label="新颜色"><ColorField value={toColor} onChange={(v) => v && setToColor(v)} /></Field>
+            <button className="btn btn-primary btn-sm mb-0.5" onClick={applyRecolor}>应用到全篇</button>
+          </div>
+          <div className="text-[11px] text-ink-text-3 mt-1.5">把全篇所有等于原颜色的文字/背景/边框统一换成新颜色（十六进制与 rgb 均可识别）。</div>
+        </div>
+
         <Field label="主色"><ColorField value={base} onChange={(v) => v && setBase(v)} /></Field>
         <button className="btn btn-soft btn-sm mt-1.5" onClick={refresh}>生成配色方案</button>
 

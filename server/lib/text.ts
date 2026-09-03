@@ -118,6 +118,41 @@ function normalizeCc(code: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* 引号规范化（只处理标签外的文本节点，避免破坏属性）                        */
+/* ------------------------------------------------------------------ */
+
+export type QuoteMode = 'corner' | 'curly' | 'straight'
+
+const QUOTE_PAIRS: Record<QuoteMode, [string, string]> = {
+  corner: ['「', '」'],
+  curly: ['\u201C', '\u201D'],
+  straight: ['"', '"'],
+}
+
+export function normalizeQuotes(html: string, mode: QuoteMode): string {
+  // 按标签切分，仅替换标签外的文本段
+  const parts = html.split(/(<[^>]*>)/g)
+  let open = false
+  const [lq, rq] = QUOTE_PAIRS[mode]
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i]
+    if (!seg || seg.startsWith('<')) continue
+    if (mode === 'straight') {
+      parts[i] = seg.replace(/[\u201C\u201D「」]/g, '"')
+    } else {
+      let out = ''
+      for (const ch of seg) {
+        if (ch === '\u201C' || ch === '「' || ch === '"') { out += open ? rq : lq; open = !open }
+        else if (ch === '\u201D' || ch === '」') { out += rq; open = false }
+        else out += ch
+      }
+      parts[i] = out
+    }
+  }
+  return parts.join('')
+}
+
+/* ------------------------------------------------------------------ */
 /* 敏感词 / 广告法极限词 / 医疗金融合规                                   */
 /* ------------------------------------------------------------------ */
 

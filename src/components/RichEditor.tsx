@@ -11,11 +11,77 @@ import SuperscriptExt from '@tiptap/extension-superscript'
 import SubscriptExt from '@tiptap/extension-subscript'
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link2, Link2Off,
-  Palette, Highlighter, RemoveFormatting, Superscript, Subscript,
+  Palette, Highlighter, RemoveFormatting, Superscript, Subscript, Paintbrush, Smile,
 } from 'lucide-react'
-import { ColorField } from '../lib/ui.js'
+import { ColorField, toast } from '../lib/ui.js'
 
 const HIGHLIGHT_COLORS = ['#FFF3B0', '#FFD9D9', '#D9F2E6', '#DCE8FF', '#EFDCFF', '#FFE7CC', 'transparent']
+
+/* ------------------------------------------------------------------ */
+/* 格式刷（规格 #49）：提取选区样式，刷到其他文本；再次点击取消            */
+/* ------------------------------------------------------------------ */
+
+interface BrushStyle {
+  bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean
+  color?: string; highlight?: string
+}
+
+let brushStyle: BrushStyle | null = null
+const brushListeners = new Set<() => void>()
+
+export const formatBrush = {
+  get: () => brushStyle,
+  set: (s: BrushStyle | null) => {
+    brushStyle = s
+    brushListeners.forEach((fn) => fn())
+  },
+  subscribe: (fn: () => void) => {
+    brushListeners.add(fn)
+    return () => { brushListeners.delete(fn) }
+  },
+}
+
+function captureBrush(editor: Editor): BrushStyle | null {
+  const s: BrushStyle = {}
+  if (editor.isActive('bold')) s.bold = true
+  if (editor.isActive('italic')) s.italic = true
+  if (editor.isActive('underline')) s.underline = true
+  if (editor.isActive('strike')) s.strike = true
+  if (editor.isActive('code')) s.code = true
+  const color = editor.getAttributes('textStyle').color as string | undefined
+  if (color) s.color = color
+  const hl = editor.getAttributes('highlight').color as string | undefined
+  if (hl) s.highlight = hl
+  return Object.keys(s).length ? s : null
+}
+
+function applyBrush(editor: Editor, s: BrushStyle) {
+  editor.chain().focus().unsetAllMarks().unsetColor().unsetHighlight().run()
+  const c = editor.chain().focus()
+  if (s.bold) c.toggleBold()
+  if (s.italic) c.toggleItalic()
+  if (s.underline) c.toggleUnderline()
+  if (s.strike) c.toggleStrike()
+  if (s.code) c.toggleCode()
+  if (s.color) c.setColor(s.color)
+  if (s.highlight) c.setHighlight({ color: s.highlight })
+  c.run()
+}
+
+/* ------------------------------------------------------------------ */
+/* 表情 / 特殊符号（规格 #57 / #58）                                     */
+/* ------------------------------------------------------------------ */
+
+const EMOJI_GROUPS: [string, string][] = [
+  ['😀', '常用'], ['😂', '常用'], ['🥰', '常用'], ['😍', '常用'], ['🤔', '常用'], ['😅', '常用'], ['😭', '常用'], ['🙏', '常用'],
+  ['👍', '手势'], ['👏', '手势'], ['💪', '手势'], ['✌️', '手势'], ['🤝', '手势'], ['👌', '手势'], ['✊', '手势'], ['🫶', '手势'],
+  ['❤️', '符号'], ['✨', '符号'], ['⭐', '符号'], ['🔥', '符号'], ['💯', '符号'], ['🎉', '符号'], ['⚡', '符号'], ['💡', '符号'],
+  ['✅', '标记'], ['❌', '标记'], ['⚠️', '标记'], ['❗', '标记'], ['❓', '标记'], ['🔴', '标记'], ['🟢', '标记'], ['🟡', '标记'],
+  ['👉', '箭头'], ['👈', '箭头'], ['➡️', '箭头'], ['⬅️', '箭头'], ['⬆️', '箭头'], ['⬇️', '箭头'], ['🔝', '箭头'], ['↩️', '箭头'],
+  ['🌸', '自然'], ['🌈', '自然'], ['🍀', '自然'], ['🌙', '自然'], ['☀️', '自然'], ['🍂', '自然'], ['🌊', '自然'], ['🍃', '自然'],
+  ['▲', '中文'], ['▼', '中文'], ['●', '中文'], ['○', '中文'], ['■', '中文'], ['□', '中文'], ['◆', '中文'], ['★', '中文'],
+  ['·', '标点'], ['、', '标点'], ['「', '标点'], ['」', '标点'], ['『', '标点'], ['』', '标点'], ['～', '标点'], ['…', '标点'],
+]
 
 export interface RichEditorProps {
   html: string
@@ -79,9 +145,16 @@ export function RichEditor({
         return false
       },
       handlePaste: (_view, event) => {
-        // 粘贴时剥掉外部样式，避免把 Word/网页的脏样式带进来
         const e = event as ClipboardEvent
-        const text = e.clipboardData?.getData('text/plain')
+        const plain = e.clipboardData?.getData('text/plain')
+        // ⇧ 粘贴 = 纯文本粘贴（规格 #52）
+        if ((event as unknown as KeyboardEvent).shiftKey && plain) {
+          e.preventDefault()
+          _view.dispatch(_view.state.tr.insertText(plain))
+          return true
+        }
+        // 粘贴时剥掉外部样式，避免把 Word/网页的脏样式带进来
+        const text = plain
         if (text && !e.clipboardData?.getData('text/html')?.includes('data-inkforge')) {
           // 保留富文本（用户可能想保留加粗），但去掉 id/class/on*
           const raw = e.clipboardData?.getData('text/html')
@@ -140,15 +213,39 @@ export function RichEditor({
 function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: string) => void }) {
   const [, force] = useState(0)
   const [showColors, setShowColors] = useState<'color' | 'highlight' | null>(null)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [brush, setBrushState] = useState<BrushStyle | null>(formatBrush.get())
 
   useEffect(() => {
     const rerender = () => force((n) => n + 1)
     editor.on('selectionUpdate', rerender)
     editor.on('transaction', rerender)
-    return () => { editor.off('selectionUpdate', rerender); editor.off('transaction', rerender) }
+    const unsub = formatBrush.subscribe(() => setBrushState(formatBrush.get()))
+    return () => { editor.off('selectionUpdate', rerender); editor.off('transaction', rerender); unsub() }
   }, [editor])
 
   const run = (fn: (ed: Editor) => void) => { fn(editor); onChange(editor.getHTML()) }
+
+  const toggleBrush = () => {
+    if (brush) { formatBrush.set(null); return }
+    const s = captureBrush(editor)
+    if (!s) { toast('先选中一段带格式的文字，再点格式刷', 'error'); return }
+    formatBrush.set(s)
+  }
+
+  // 有格式刷待应用时，用户选中一段文字即自动刷上
+  useEffect(() => {
+    if (!brush || !editor) return
+    const onSel = () => {
+      const { empty } = editor.state.selection
+      if (empty) return
+      applyBrush(editor, brush)
+      onChange(editor.getHTML())
+      formatBrush.set(null)
+    }
+    editor.on('selectionUpdate', onSel)
+    return () => { editor.off('selectionUpdate', onSel) }
+  }, [brush, editor, onChange])
 
   const { from, to } = editor.state.selection
   const empty = from === to
@@ -182,8 +279,29 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         {editor.isActive('link') && (
           <TBtn title="取消链接" onClick={() => run((e) => e.chain().focus().unsetLink().run())}><Link2Off size={13} /></TBtn>
         )}
+        <Sep />
+        <TBtn title="格式刷：提取当前选区样式，再选中其他文字即可刷上" active={!!brush} onClick={toggleBrush}>
+          <Paintbrush size={13} />
+        </TBtn>
+        <TBtn title="表情 / 符号" active={showEmoji} onClick={() => setShowEmoji(!showEmoji)}>
+          <Smile size={13} />
+        </TBtn>
         <TBtn title="清除格式" onClick={() => run((e) => e.chain().focus().unsetAllMarks().clearNodes().run())}><RemoveFormatting size={13} /></TBtn>
       </div>
+
+      {showEmoji && (
+        <div className="absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1 w-64 max-h-40 overflow-y-auto">
+          <div className="grid grid-cols-10 gap-0.5">
+            {EMOJI_GROUPS.map(([em, group], i) => (
+              <button key={i} title={group}
+                className="w-[22px] h-[22px] rounded text-[14px] leading-[22px] hover:bg-black/[0.06]"
+                onClick={() => { run((e) => e.chain().focus().insertContent(em).run()) }}>
+                {em}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showColors === 'color' && (
         <div className="absolute z-50 bg-white rounded-lg border border-ink-line shadow-xl p-2 mb-1">

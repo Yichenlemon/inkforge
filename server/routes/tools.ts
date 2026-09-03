@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { typeset, convertChinese, scanRisks, scanTypos, readability, countText, makeDigest, autoSpacing, toHalfWidth, toFullWidth, avoidOrphan, AD_LAW_WORDS, MEDICAL_WORDS, FINANCE_WORDS } from '../lib/text.js'
+import { typeset, convertChinese, scanRisks, scanTypos, readability, countText, makeDigest, autoSpacing, toHalfWidth, toFullWidth, avoidOrphan, normalizeQuotes, AD_LAW_WORDS, MEDICAL_WORDS, FINANCE_WORDS } from '../lib/text.js'
 import { extractPalette } from '../../shared/themes.js'
 import { asyncHandler, ok, badRequest, str, num, bool } from '../lib/http.js'
 import { colord } from 'colord'
@@ -34,6 +34,14 @@ toolsRouter.post('/tools/orphan', asyncHandler(async (req, res) => {
 toolsRouter.post('/tools/case', asyncHandler(async (req, res) => {
   const mode = str(req.body?.mode, 's2t') as any
   return ok(res, { text: convertChinese(str(req.body?.text), mode) })
+}))
+
+/** 引号规范化：corner（直角）/ curly（弯引号）/ straight（直引号） */
+toolsRouter.post('/tools/quote', asyncHandler(async (req, res) => {
+  const html = str(req.body?.html)
+  const mode = str(req.body?.mode, 'curly') as 'corner' | 'curly' | 'straight'
+  if (!html) badRequest('缺少内容')
+  return ok(res, { html: normalizeQuotes(html, mode) })
 }))
 
 toolsRouter.post('/tools/check', asyncHandler(async (req, res) => {

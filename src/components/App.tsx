@@ -19,6 +19,7 @@ import { CoverDialog } from './CoverDialog.jsx'
 import { CommandPalette } from './CommandPalette.jsx'
 import { HistoryPanel } from './HistoryPanel.jsx'
 import { MarkdownDialog } from './MarkdownDialog.jsx'
+import { FindReplaceDialog } from './FindReplaceDialog.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
 import { Modal, ToastHost, toast, copyText } from '../lib/ui.js'
@@ -66,6 +67,7 @@ export default function App() {
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); return }
       if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); openModal('export'); return }
       if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); setViewMode(viewMode === 'preview' ? 'edit' : 'preview'); return }
+      if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openModal('findReplace'); return }
       if (mod && e.key.toLowerCase() === 'z' && !typing) {
         e.preventDefault()
         if (e.shiftKey) useDoc.getState().redo()
@@ -237,6 +239,7 @@ export default function App() {
       <CommandPalette />
       <HistoryPanel />
       <MarkdownDialog />
+      <FindReplaceDialog />
       <ToastHost />
     </div>
   )
