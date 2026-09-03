@@ -194,7 +194,14 @@ function AssetsTab() {
     mkInsert({ type: 'html', data: { html: wrapped }, style: { marginTop: 6, marginBottom: 6 } })
   }
 
+  // 同一 id 可能被故意放在多个分类下（交叉分类），渲染时按 id 去重并合成唯一 key，
+  // 既避免 React key 警告，也避免分类网格里同图重复出现。
   const list = illKw.trim() ? searchIllustrations(illKw) : (ILLUSTRATIONS_BY_CATEGORY.find((g) => g.category === illCat)?.items ?? [])
+  const seen = new Set<string>()
+  const deduped = list.filter((il) => {
+    if (seen.has(il.id)) return false
+    seen.add(il.id); return true
+  })
 
   return (
     <div className="flex flex-col h-full">
@@ -220,8 +227,8 @@ function AssetsTab() {
             </div>
             <input className="input mb-1.5" placeholder="搜索插画…" value={illKw} onChange={(e) => setIllKw(e.target.value)} />
             <div className="grid grid-cols-4 gap-1.5">
-              {list.map((il) => (
-                <button key={il.id} title={`${il.name}${il.dynamic ? '（动效）' : ''} — 点击插入`}
+              {deduped.map((il) => (
+                <button key={`${il.id}:${illCat}`} title={`${il.name}${il.dynamic ? '（动效）' : ''} — 点击插入`}
                   onClick={() => insertIllustration(tintIllustration(il.svg, tokens.colorPrimary))}
                   className="group/il aspect-square rounded-lg border border-ink-line flex flex-col items-center justify-center p-1 hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] relative">
                   <div className="flex-1 w-full flex items-center justify-center text-ink-text" dangerouslySetInnerHTML={{ __html: tintIllustration(il.svg, tokens.colorPrimary) }} />

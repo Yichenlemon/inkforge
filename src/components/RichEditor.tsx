@@ -501,7 +501,7 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
             {([
               ['block', '区块'], ['component', '组件'], ['asset', '素材'],
             ] as const).map(([t, l]) => (
-              <button key={t} onClick={() => setInsertTab(t)}
+              <button key={t} onMouseDown={(e) => e.preventDefault()} onClick={() => setInsertTab(t)}
                 className={`px-2 py-1 rounded text-[11.5px] transition-colors ${insertTab === t ? 'bg-[#2C6BED]/10 text-[#2C6BED] font-semibold' : 'text-ink-text-2 hover:bg-black/[0.05]'}`}>
                 {l}
               </button>
@@ -618,7 +618,7 @@ function ComponentInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
   const list = searchComponents(q)
   return (
     <div>
-      <input className="input mb-2" placeholder="搜索组件（标题 / 卡片 / 引用…）" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input onMouseDown={(e) => e.preventDefault()} className="input mb-2" placeholder="搜索组件（标题 / 卡片 / 引用…）" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
         {COMPONENTS_BY_CATEGORY.map((g) => {
           const items = g.items.filter((it) => list.includes(it))
@@ -649,7 +649,7 @@ function AssetInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
   const list = searchIllustrations(q)
   return (
     <div>
-      <input className="input mb-2" placeholder="搜索素材（箭头 / 商务 / 动效…）" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input onMouseDown={(e) => e.preventDefault()} className="input mb-2" placeholder="搜索素材（箭头 / 商务 / 动效…）" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto">
         {list.map((il) => (
           <button key={il.id} title={il.name} onClick={() => onInsert([makeBlock('svg', { svg: il.svg, name: il.name }, { marginBottom: 12 })])}
