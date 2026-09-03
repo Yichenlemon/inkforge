@@ -1066,6 +1066,327 @@ function renderInteractive(d: InteractiveData, b: Block, ctx: RenderCtx, blockId
         `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击渐显内容')}</span></section>`
     }
 
+    /** 数字滚动：点击后进度条填充，末位显示目标数值（无 JS） */
+    case 'counter': {
+      const final = Math.max(0, Math.min(9999, Number(panels[0]?.html) || Number(d.value) || 100))
+      const label = panels[1]?.html ?? ''
+      const W = d.width ?? 220, H = d.height ?? 120
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<rect x="0" y="${H - 16}" width="0" height="10" rx="5" fill="${t.colorPrimary}"><animate attributeName="width" from="0" to="${W}" begin="touchstart; click" dur="1s" fill="freeze"/></rect>` +
+        `<text x="${W / 2}" y="${H / 2 - 8}" dy="0.35em" text-anchor="middle" font-size="34" fill="${t.colorPrimary}" font-weight="800" opacity="0">${esc(String(final))}` +
+        `<set attributeName="opacity" to="1" begin="touchstart+0.9s; click+0.9s" dur="0.2s" fill="freeze"/></text>` +
+        `</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(label)}</span></section>`
+    }
+
+    /** 图片旋转：点击后 SMIL 旋转 90°（无 JS） */
+    case 'rotate': {
+      const src = panels[0]?.imageUrl ? esc(panels[0].imageUrl) : ''
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 220
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', overflow: 'hidden' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;border-radius:${px(t.radius)};cursor:pointer">` +
+        (src
+          ? `<image href="${src}" xlink:href="${src}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"><animateTransform attributeName="transform" type="rotate" from="0 ${W / 2} ${H / 2}" to="90 ${W / 2} ${H / 2}" begin="touchstart; click" dur="0.5s" fill="freeze" additive="sum"/></image>`
+          : `<rect x="0" y="0" width="${W}" height="${H}" fill="${t.colorSurface}"/>`) +
+        `<text x="${W / 2}" y="${H - 12}" font-size="13" fill="#ffffff" font-weight="600">${esc(d.hint ?? '点击旋转')}</text></svg></section>`
+    }
+
+    /** 水波纹：点击后中心圆环扩散淡出（无 JS） */
+    case 'ripple': {
+      const W = d.width ?? 200, H = d.height ?? 200
+      const cap = (panels[0]?.html ?? '点击').slice(0, 10)
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer">` +
+        `<circle cx="${W / 2}" cy="${H / 2}" r="0" fill="none" stroke="${t.colorPrimary}" stroke-width="4" opacity="0">` +
+        `<animate attributeName="r" from="0" to="${(Math.min(W, H) / 2).toFixed(0)}" begin="touchstart; click" dur="0.8s" fill="freeze"/>` +
+        `<animate attributeName="opacity" values="0.9;0" dur="0.8s" begin="touchstart; click" fill="freeze"/></circle>` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="16" fill="${t.colorText}">${esc(cap)}</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击产生水波纹')}</span></section>`
+    }
+
+    /** 烟花：点击后多色粒子向外飞散（无 JS） */
+    case 'fireworks': {
+      const cap = panels[0]?.html ?? '绽放'
+      const W = d.width ?? 240, H = d.height ?? 200
+      const colors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF9F45', '#C780FA']
+      const N = 14
+      let parts = ''
+      for (let i = 0; i < N; i++) {
+        const ang = (Math.PI * 2 * i) / N
+        const dx = (Math.cos(ang) * W * 0.42).toFixed(0)
+        const dy = (Math.sin(ang) * H * 0.42).toFixed(0)
+        const c = colors[i % colors.length]
+        parts += `<circle cx="${W / 2}" cy="${H / 2}" r="3" fill="${c}" opacity="0">` +
+          `<animateTransform attributeName="transform" type="translate" from="0 0" to="${dx} ${dy}" begin="touchstart; click" dur="1s" fill="freeze"/>` +
+          `<animate attributeName="opacity" values="1;1;0" keyTimes="0;0.7;1" begin="touchstart; click" dur="1s" fill="freeze"/></circle>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${parts}` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="18" fill="${t.colorPrimary}" font-weight="700">${esc(cap.slice(0, 10))}</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击放烟花')}</span></section>`
+    }
+
+    /** 飘雪：SMIL 自动循环下落（无 JS，自动播放） */
+    case 'snow': {
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 160
+      let flakes = ''
+      for (let i = 0; i < 14; i++) {
+        const x = Math.round((i * 53) % W)
+        const dur = (3 + (i % 4)).toFixed(1)
+        const begin = ((i * 0.4) % 3).toFixed(1)
+        const r = 2 + (i % 3)
+        flakes += `<text x="${x}" y="0" font-size="${r * 3}" fill="#bcd4ff" opacity="0.9">` +
+          `<animateTransform attributeName="transform" type="translate" from="0 -10" to="0 ${H}" begin="${begin}s" dur="${dur}s" repeatCount="indefinite"/>❄</text>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': '#0e1726', 'border-radius': px(t.radius), overflow: 'hidden',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${flakes}</svg></section>`
+    }
+
+    /** 气泡上升：SMIL 自动循环上浮（无 JS，自动播放） */
+    case 'bubble-rise': {
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 160
+      let bub = ''
+      for (let i = 0; i < 12; i++) {
+        const x = Math.round((i * 61) % W)
+        const dur = (2.5 + (i % 3)).toFixed(1)
+        const begin = ((i * 0.5) % 2.5).toFixed(1)
+        const r = 3 + (i % 4)
+        bub += `<circle cx="${x}" cy="${H}" r="${r}" fill="#ffffff" opacity="0.5">` +
+          `<animateTransform attributeName="transform" type="translate" from="0 0" to="0 ${-H}" begin="${begin}s" dur="${dur}s" repeatCount="indefinite"/>` +
+          `<animate attributeName="opacity" values="0;0.6;0" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/></circle>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': '#1b6ca8', 'border-radius': px(t.radius), overflow: 'hidden',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${bub}</svg></section>`
+    }
+
+    /** 飘心：点击后多个心形自下而上飘动（无 JS） */
+    case 'heart-float': {
+      const W = d.width ?? 200, H = d.height ?? 200
+      const heart = 'M12 21s-7.5-4.6-10-9.2C.7 9 2 5 5.5 5c2 0 3.2 1.1 4.5 2.4C11.3 6.1 12.5 5 14.5 5 18 5 19.3 9 17 11.8 14.5 16.4 12 21 12 21z'
+      let hearts = ''
+      for (let i = 0; i < 6; i++) {
+        const x = 40 + (i * 28) % 120
+        const begin = (i * 0.25).toFixed(2)
+        hearts += `<path d="${heart}" fill="${t.colorPrimary}" opacity="0" transform="translate(${x} ${H - 20}) scale(0.8)">` +
+          `<animateTransform attributeName="transform" type="translate" from="${x} ${H - 20}" to="${x} 10" begin="touchstart+${begin}s; click+${begin}s" dur="1.6s" fill="freeze"/>` +
+          `<animate attributeName="opacity" values="0;1;0" keyTimes="0;0.2;1" begin="touchstart+${begin}s; click+${begin}s" dur="1.6s" fill="freeze"/></path>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer">${hearts}</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击飘心')}</span></section>`
+    }
+
+    /** 星光：点击后放射线从中心射出（无 JS） */
+    case 'star-burst': {
+      const W = d.width ?? 200, H = d.height ?? 200
+      const cx = W / 2, cy = H / 2
+      let rays = ''
+      for (let i = 0; i < 12; i++) {
+        const a = (Math.PI * 2 * i) / 12
+        const x2 = (cx + Math.cos(a) * Math.min(W, H) * 0.42).toFixed(1)
+        const y2 = (cy + Math.sin(a) * Math.min(W, H) * 0.42).toFixed(1)
+        rays += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy}" stroke="${t.colorPrimary}" stroke-width="3" stroke-linecap="round" opacity="0">` +
+          `<animate attributeName="x2" to="${x2}" begin="touchstart; click" dur="0.5s" fill="freeze"/>` +
+          `<animate attributeName="y2" to="${y2}" begin="touchstart; click" dur="0.5s" fill="freeze"/>` +
+          `<animate attributeName="opacity" values="1;0" keyTimes="0;1" begin="touchstart; click" dur="0.7s" fill="freeze"/></line>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer">${rays}` +
+        `<circle cx="${cx}" cy="${cy}" r="6" fill="${t.colorPrimary}"/></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击星光')}</span></section>`
+    }
+
+    /** 输入中：SMIL 三点循环呼吸（无 JS，自动播放） */
+    case 'typing-dots': {
+      const cap = panels[0]?.html ?? '对方正在输入…'
+      const W = 140, H = 40
+      const dots = [0, 1, 2].map((i) =>
+        `<circle cx="${W / 2 + (i - 1) * 22}" cy="${H / 2}" r="6" fill="${t.colorPrimary}">` +
+        `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/></circle>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="140" height="${H}" style="display:inline-block">${dots}</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(cap)}</span></section>`
+    }
+
+    /** 抖动：点击后盒子左右抖动提醒（无 JS） */
+    case 'shake': {
+      const inner = (panels[0]?.html ?? panels[0]?.title ?? '点击抖动提醒').replace(/<[^>]+>/g, '')
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 80
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<g><animateTransform attributeName="transform" type="translate" values="0 0; -8 0; 8 0; -6 0; 6 0; 0 0" dur="0.5s" begin="touchstart; click" fill="freeze" additive="sum"/>` +
+        `<rect x="${W / 2 - 90}" y="${H / 2 - 20}" width="180" height="40" rx="10" fill="${t.colorPrimary}"/>` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="16" fill="#ffffff" font-weight="700">${esc(inner.slice(0, 12))}</text></g></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击抖动')}</span></section>`
+    }
+
+    /** 放大镜：点击后中心圆形区域显示放大版图片（无 JS） */
+    case 'magnifier': {
+      const src = panels[0]?.imageUrl ? esc(panels[0].imageUrl) : ''
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 240
+      const lensR = (Math.min(W, H) * 0.28).toFixed(0)
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;border-radius:${px(t.radius)};cursor:pointer">` +
+        (src
+          ? `<image href="${src}" xlink:href="${src}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>`
+          : `<rect x="0" y="0" width="${W}" height="${H}" fill="${t.colorSurface}"/>`) +
+        (src
+          ? `<clipPath id="lens-${blockId}"><circle cx="${W / 2}" cy="${H / 2}" r="${lensR}"/></clipPath>` +
+            `<g clip-path="url(#lens-${blockId})" opacity="0"><image href="${src}" xlink:href="${src}" x="${-W * 0.5}" y="${-H * 0.5}" width="${W * 2}" height="${H * 2}" preserveAspectRatio="xMidYMid slice"/><animate attributeName="opacity" to="1" begin="touchstart; click" dur="0.2s" fill="freeze"/></g>`
+          : '') +
+        `<circle cx="${W / 2}" cy="${H / 2}" r="${lensR}" fill="none" stroke="#ffffff" stroke-width="3" opacity="0"><set attributeName="opacity" to="1" begin="touchstart; click" dur="0.01s" fill="freeze"/></circle>` +
+        `<text x="${W / 2}" y="${H - 12}" font-size="13" fill="#ffffff" font-weight="600">${esc(d.hint ?? '点击放大查看')}</text></svg></section>`
+    }
+
+    /** 分页：点击后各页按时间片轮流切换（无 JS，展示型） */
+    case 'pagination': {
+      const pages = panels.length ? panels : [{ html: '第 1 页内容' }, { html: '第 2 页内容' }, { html: '第 3 页内容' }]
+      const n = Math.max(1, pages.length)
+      const cycle = Math.max(2, n * 2)
+      const W = d.width ?? ctx.maxWidth
+      const items = pages.map((p, i) =>
+        `<span leaf style="display:block;opacity:0;font-size:${t.fontSize - 1}px;line-height:${t.lineHeight};color:${t.colorText}">` +
+        `<animate attributeName="opacity" values="1;0" keyTimes="0;${(1 / n).toFixed(3)}" calcMode="discrete" begin="${(i * (cycle / n)).toFixed(2)}s" dur="${cycle}s" repeatCount="indefinite"/>${richText(p.html ?? p.title ?? '')}</span>`).join('')
+      const dots = pages.map((_, i) =>
+        `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 3px;background-color:${i === 0 ? t.colorPrimary : t.colorMuted};opacity:0.8"></span>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">${items}<span style="display:block;margin-top:8px">${dots}</span>` +
+        `<span leaf style="display:block;margin-top:4px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击切换下一页')}</span></section>`
+    }
+
+    /** 步骤条：点击后逐个点亮步骤节点（无 JS） */
+    case 'steps-flow': {
+      const steps = panels.length ? panels : [{ title: '第一步' }, { title: '第二步' }, { title: '第三步' }]
+      const n = Math.max(1, steps.length)
+      const W = d.width ?? ctx.maxWidth
+      const rowH = 36
+      const Hh = n * rowH + 10
+      let rows = ''
+      for (let i = 0; i < n; i++) {
+        const y0 = i * rowH + 10
+        rows += `<circle cx="16" cy="${y0 + 14}" r="11" fill="${t.colorSurface}" stroke="${t.colorPrimary}" stroke-width="2">` +
+          `<animate attributeName="fill" to="${t.colorPrimary}" begin="touchstart+${(i * 0.4).toFixed(1)}s; click+${(i * 0.4).toFixed(1)}s" dur="0.2s" fill="freeze"/></circle>` +
+          `<text x="16" y="${y0 + 19}" text-anchor="middle" font-size="12" fill="${t.colorText}" font-weight="700">${i + 1}</text>` +
+          `<text x="40" y="${y0 + 19}" dy="0.35em" font-size="14" fill="${t.colorText}">${esc((steps[i].title ?? `步骤${i + 1}`).slice(0, 16))}</text>` +
+          (i < n - 1 ? `<line x1="16" y1="${y0 + 25}" x2="16" y2="${y0 + rowH + 10}" stroke="${t.colorPrimary}" stroke-width="2" opacity="0.4"/>` : '')
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '12px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}" width="100%" height="${Hh}" style="display:block">${rows}</svg>` +
+        `<span leaf style="display:block;text-align:center;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击逐步点亮')}</span></section>`
+    }
+
+    /** 文字切换：点击从第一段切换显示第二段（无 JS） */
+    case 'toggle-text': {
+      const a = panels[0]?.html ?? panels[0]?.title ?? '第一段内容'
+      const btxt = panels[1]?.html ?? panels[1]?.title ?? '第二段内容'
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<span leaf style="display:block;opacity:1;font-size:${t.fontSize - 1}px;line-height:${t.lineHeight};color:${t.colorText}"><set attributeName="opacity" to="0" begin="touchstart; click" dur="0.01s" fill="freeze"/>${richText(a)}</span>` +
+        `<span leaf style="display:block;opacity:0;font-size:${t.fontSize - 1}px;line-height:${t.lineHeight};color:${t.colorText}"><set attributeName="opacity" to="1" begin="touchstart; click" dur="0.01s" fill="freeze"/>${richText(btxt)}</span>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击切换文字')}</span></section>`
+    }
+
+    /** 划词高亮：点击后整段文字下方黄色高亮渐显（无 JS） */
+    case 'highlight-text': {
+      const full = panels[0]?.html ?? panels[0]?.title ?? '点击高亮这段文字的重点内容。'
+      const W = d.width ?? ctx.maxWidth, H = 80
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<rect x="0" y="6" width="${W}" height="${H - 12}" rx="6" fill="#FFF3A0" opacity="0"><set attributeName="opacity" to="0.6" begin="touchstart; click" dur="0.3s" fill="freeze"/></rect>` +
+        `<text x="10" y="30" font-size="16" fill="${t.colorText}">${esc(full.slice(0, 80))}</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击高亮')}</span></section>`
+    }
+
+    /** 折叠面板：原生 <details> 单块折叠，微信支持（无 JS） */
+    case 'accordion-vert': {
+      const title = panels[0]?.title ?? panels[0]?.html ?? '展开查看更多'
+      const body = panels[1]?.html ?? panels[1]?.title ?? ''
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {})}">` +
+        `<details style="background-color:${t.colorSurface};border-radius:${px(t.radius)};padding:10px 12px">` +
+        `<summary style="cursor:pointer;font-weight:600;color:${t.headingColor};font-size:${t.fontSize}px">${richText(title)}</summary>` +
+        `<span leaf style="display:block;margin-top:8px;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight}">${richText(body)}</span></details></section>`
+    }
+
+    /** 剧透遮罩：点击后遮罩淡出揭晓内容（无 JS） */
+    case 'spoiler': {
+      const cover = panels[0]?.html ?? panels[0]?.title ?? '剧透预警，点击查看'
+      const secret = panels[1]?.html ?? panels[1]?.title ?? ''
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': '#2b2b2b', 'border-radius': px(t.radius), padding: '16px',
+      })}">` +
+        `<span leaf style="display:block;color:#bbbbbb;font-size:${t.fontSize - 1}px"><set attributeName="opacity" to="0" begin="touchstart; click" dur="0.2s" fill="freeze"/>${richText(cover)}</span>` +
+        `<span leaf style="display:block;opacity:0;margin-top:8px;font-size:${t.fontSize}px;color:#ffffff;line-height:${t.lineHeight}"><set attributeName="opacity" to="1" begin="touchstart; click" dur="0.2s" fill="freeze"/>${richText(secret)}</span></section>`
+    }
+
+    /** 时间轴：原生 <details> 时间点列表，微信支持（无 JS） */
+    case 'timeline-int': {
+      const items = panels.length ? panels : [{ title: '2020', html: '起点' }, { title: '2023', html: '成长' }, { title: '2026', html: '突破' }]
+      const rows = items.map((p) =>
+        `<details style="margin-bottom:8px;background-color:${t.colorSurface};border-radius:${px(t.radius)};padding:10px 12px;border-left:3px solid ${t.colorPrimary}">` +
+        `<summary style="cursor:pointer;font-weight:600;color:${t.headingColor};font-size:${t.fontSize}px">${richText(p.title ?? '')}</summary>` +
+        `<span leaf style="display:block;margin-top:8px;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight}">${richText(p.html ?? '')}</span></details>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {})}">${rows}</section>`
+    }
+
+    /** 彩带雨：SMIL 自动循环飘落（无 JS，自动播放） */
+    case 'confetti-rain': {
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 160
+      const colors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF9F45']
+      let conf = ''
+      for (let i = 0; i < 16; i++) {
+        const x = Math.round((i * 73) % W)
+        const dur = (2 + (i % 4)).toFixed(1)
+        const begin = ((i * 0.35) % 2).toFixed(2)
+        const c = colors[i % colors.length]
+        const w = 6 + (i % 4)
+        conf += `<rect x="${x}" y="${-10}" width="${w}" height="${(w * 1.6).toFixed(0)}" rx="2" fill="${c}" opacity="0.9">` +
+          `<animateTransform attributeName="transform" type="translate" from="0 -10" to="0 ${H}" begin="${begin}s" dur="${dur}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), overflow: 'hidden',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${conf}</svg></section>`
+    }
+
+    /** 呼吸边框：SMIL 边框循环明暗（无 JS，自动播放） */
+    case 'pulse': {
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 120
+      const inner = (panels[0]?.html ?? panels[0]?.title ?? '重点提示').slice(0, 16)
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<rect x="4" y="4" width="${W - 8}" height="${H - 8}" rx="14" fill="none" stroke="${t.colorPrimary}" stroke-width="3" opacity="0.5">` +
+        `<animate attributeName="opacity" values="0.2;1;0.2" dur="1.6s" repeatCount="indefinite"/>` +
+        `<animate attributeName="stroke-width" values="2;5;2" dur="1.6s" repeatCount="indefinite"/></rect>` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="18" fill="${t.colorText}" font-weight="600">${esc(inner)}</text></svg></section>`
+    }
+
     default:
       return ''
   }

@@ -363,10 +363,20 @@ function TypeSpecificProps({ block }: { block: Block }) {
                 { value: 'poll', label: '投票' }, { value: 'chat', label: '逐条对话' },
                 { value: 'badge', label: '角标弹出' }, { value: 'countdown', label: '倒计时' },
                 { value: 'marquee-text', label: '文字跑马灯' }, { value: 'reveal-fade', label: '渐显文字' },
+                { value: 'counter', label: '数字滚动' }, { value: 'rotate', label: '图片旋转' },
+                { value: 'ripple', label: '水波纹' }, { value: 'fireworks', label: '点击烟花' },
+                { value: 'snow', label: '飘雪' }, { value: 'bubble-rise', label: '气泡上升' },
+                { value: 'heart-float', label: '飘心' }, { value: 'star-burst', label: '星光' },
+                { value: 'typing-dots', label: '输入中' }, { value: 'shake', label: '抖动提醒' },
+                { value: 'magnifier', label: '放大镜' }, { value: 'pagination', label: '分页切换' },
+                { value: 'steps-flow', label: '步骤条' }, { value: 'toggle-text', label: '文字切换' },
+                { value: 'highlight-text', label: '划词高亮' }, { value: 'accordion-vert', label: '折叠面板' },
+                { value: 'spoiler', label: '剧透遮罩' }, { value: 'timeline-int', label: '时间轴' },
+                { value: 'confetti-rain', label: '彩带雨' }, { value: 'pulse', label: '呼吸边框' },
               ]} />
           </Field>
           <Field label="提示语"><input className="input" value={d.hint ?? ''} onChange={(e) => up({ hint: e.target.value })} /></Field>
-          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee' || d.kind === 'zoom' || d.kind === 'progress-ring' || d.kind === 'before-after' || d.kind === 'hotzone' || d.kind === 'confetti' || d.kind === 'badge' || d.kind === 'countdown' || d.kind === 'marquee-text') && (
+          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee' || d.kind === 'zoom' || d.kind === 'progress-ring' || d.kind === 'before-after' || d.kind === 'hotzone' || d.kind === 'confetti' || d.kind === 'badge' || d.kind === 'countdown' || d.kind === 'marquee-text' || d.kind === 'counter' || d.kind === 'rotate' || d.kind === 'ripple' || d.kind === 'fireworks' || d.kind === 'snow' || d.kind === 'bubble-rise' || d.kind === 'heart-float' || d.kind === 'star-burst' || d.kind === 'typing-dots' || d.kind === 'shake' || d.kind === 'magnifier' || d.kind === 'pagination' || d.kind === 'steps-flow' || d.kind === 'toggle-text' || d.kind === 'highlight-text' || d.kind === 'accordion-vert' || d.kind === 'spoiler' || d.kind === 'timeline-int' || d.kind === 'confetti-rain' || d.kind === 'pulse') && (
             <>
               <Field label="宽度"><NumberInput value={d.width ?? 677} onChange={(v) => up({ width: v })} min={120} /></Field>
               <Field label="高度"><NumberInput value={d.height ?? (d.kind === 'flip' ? 200 : d.kind === 'carousel' ? 240 : d.kind === 'marquee' || d.kind === 'marquee-text' ? 40 : d.kind === 'badge' ? 120 : 120)} onChange={(v) => up({ height: v })} min={40} /></Field>

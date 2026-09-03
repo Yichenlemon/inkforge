@@ -401,6 +401,9 @@ export type InteractiveKind =
   | 'read-more' | 'like' | 'rating' | 'zoom' | 'typewriter' | 'switch'
   | 'progress-ring' | 'tooltip' | 'hotzone' | 'before-after' | 'faq' | 'confetti'
   | 'loading' | 'soundwave' | 'poll' | 'chat' | 'badge' | 'countdown' | 'marquee-text' | 'reveal-fade'
+  | 'counter' | 'rotate' | 'ripple' | 'fireworks' | 'snow' | 'bubble-rise' | 'heart-float'
+  | 'star-burst' | 'typing-dots' | 'shake' | 'magnifier' | 'pagination' | 'steps-flow'
+  | 'toggle-text' | 'highlight-text' | 'accordion-vert' | 'spoiler' | 'timeline-int' | 'confetti-rain' | 'pulse'
 
 export interface InteractiveData {
   kind: InteractiveKind
