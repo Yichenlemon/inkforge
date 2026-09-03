@@ -21,6 +21,12 @@ const blocks: Block[] = [
   makeBlock('interactive', { kind: 'progress', panels: [{ html: '85%' }], progress: 0.85, width: 677, height: 28 }),
   makeBlock('interactive', { kind: 'marquee', panels: [{ imageUrl: IMG(1) }, { imageUrl: IMG(2) }, { imageUrl: IMG(3) }], height: 120 }),
   makeBlock('interactive', { kind: 'scratch', panels: [{ imageUrl: IMG(1) }, { html: '刮开' }] }), // 已知降级
+  makeBlock('interactive', { kind: 'read-more', panels: [{ title: '摘要', html: '完整内容段落' }] }),
+  makeBlock('interactive', { kind: 'like', panels: [{ html: '点赞' }] }),
+  makeBlock('interactive', { kind: 'rating', panels: [{ html: '评分' }], count: 5, value: 4 }),
+  makeBlock('interactive', { kind: 'zoom', panels: [{ imageUrl: IMG(1) }], width: 677, height: 220 }),
+  makeBlock('interactive', { kind: 'typewriter', panels: [{ html: '欢迎关注我们的公众号' }] }),
+  makeBlock('interactive', { kind: 'switch', panels: [{ html: '通知' }], onLabel: '开', offLabel: '关' }),
 ]
 
 const doc = { themeId: 'clean', title: 'smoke', blocks, meta: {} } as any

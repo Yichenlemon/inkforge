@@ -905,6 +905,7 @@ const IX_LABEL: Record<string, string> = {
   slider: '横向滑动', 'click-reveal': '点击揭晓', scratch: '刮刮卡',
   longpress: '长按查看', flip: '点击翻牌', 'accordion-click': '点击展开', tab: '点击切换',
   carousel: '图片轮播', progress: '进度条', marquee: '图片跑马灯',
+  'read-more': '展开全文', like: '点赞', rating: '星级评分', zoom: '图片放大', typewriter: '打字机', switch: '开关',
 }
 
 export function InteractiveView({ block, data, tokens }: BlockViewProps<InteractiveData>) {
@@ -934,7 +935,7 @@ export function InteractiveView({ block, data, tokens }: BlockViewProps<Interact
                 style={{ fontWeight: 600, color: tokens.headingColor, fontSize: tokens.fontSize }} />
               <RichEditor html={p.html ?? ''} onChange={(h) => set(i, { html: h })} bubble placeholder="内容"
                 style={{ fontSize: tokens.fontSize - 1, color: tokens.colorText, lineHeight: tokens.lineHeight }} />
-              {(data.kind === 'slider' || data.kind === 'scratch' || data.kind === 'carousel' || data.kind === 'marquee') && (
+              {(data.kind === 'slider' || data.kind === 'scratch' || data.kind === 'carousel' || data.kind === 'marquee' || data.kind === 'zoom') && (
                 <ImagePicker value={p.imageUrl} onChange={(u) => set(i, { imageUrl: u })} />
               )}
             </div>

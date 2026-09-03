@@ -398,6 +398,7 @@ export interface QrcodeData {
 export type InteractiveKind =
   | 'slider' | 'click-reveal' | 'scratch' | 'longpress' | 'flip' | 'accordion-click' | 'tab'
   | 'carousel' | 'progress' | 'marquee'
+  | 'read-more' | 'like' | 'rating' | 'zoom' | 'typewriter' | 'switch'
 
 export interface InteractiveData {
   kind: InteractiveKind
@@ -410,6 +411,14 @@ export interface InteractiveData {
   height?: number
   /** 进度条目标比例 0~1（progress 专用） */
   progress?: number
+  /** 星级数量（rating 专用） */
+  count?: number
+  /** 默认点亮星数（rating 专用） */
+  value?: number
+  /** 开关开启文案（switch 专用） */
+  onLabel?: string
+  /** 开关关闭文案（switch 专用） */
+  offLabel?: string
 }
 
 export interface HtmlData {

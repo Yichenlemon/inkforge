@@ -352,11 +352,14 @@ function TypeSpecificProps({ block }: { block: Block }) {
                 { value: 'tab', label: '点击切换' }, { value: 'accordion-click', label: '点击展开' },
                 { value: 'carousel', label: '图片轮播' }, { value: 'progress', label: '进度条' },
                 { value: 'marquee', label: '图片跑马灯' },
+                { value: 'read-more', label: '展开全文' }, { value: 'like', label: '点赞' },
+                { value: 'rating', label: '星级评分' }, { value: 'zoom', label: '图片放大' },
+                { value: 'typewriter', label: '打字机' }, { value: 'switch', label: '开关' },
                 { value: 'scratch', label: '刮刮卡（降级）' },
               ]} />
           </Field>
           <Field label="提示语"><input className="input" value={d.hint ?? ''} onChange={(e) => up({ hint: e.target.value })} /></Field>
-          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee') && (
+          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee' || d.kind === 'zoom') && (
             <>
               <Field label="宽度"><NumberInput value={d.width ?? 677} onChange={(v) => up({ width: v })} min={120} /></Field>
               <Field label="高度"><NumberInput value={d.height ?? (d.kind === 'flip' ? 200 : d.kind === 'carousel' ? 240 : 120)} onChange={(v) => up({ height: v })} min={60} /></Field>
@@ -367,6 +370,18 @@ function TypeSpecificProps({ block }: { block: Block }) {
               <NumberInput value={Math.round((d.progress ?? 0.85) * 100)} min={0} max={100} suffix="%"
                 onChange={(v) => up({ progress: Math.max(0, Math.min(1, (v ?? 85) / 100)) })} />
             </Field>
+          )}
+          {d.kind === 'rating' && (
+            <>
+              <Field label="星级数量"><NumberInput value={d.count ?? 5} min={1} max={10} onChange={(v) => up({ count: Math.max(1, Math.min(10, v ?? 5)) })} /></Field>
+              <Field label="默认点亮"><NumberInput value={d.value ?? (d.count ?? 5)} min={0} max={10} onChange={(v) => up({ value: Math.max(0, Math.min(10, v ?? 0)) })} /></Field>
+            </>
+          )}
+          {d.kind === 'switch' && (
+            <>
+              <Field label="开启文案"><input className="input" value={d.onLabel ?? ''} onChange={(e) => up({ onLabel: e.target.value })} /></Field>
+              <Field label="关闭文案"><input className="input" value={d.offLabel ?? ''} onChange={(e) => up({ offLabel: e.target.value })} /></Field>
+            </>
           )}
         </>
       )

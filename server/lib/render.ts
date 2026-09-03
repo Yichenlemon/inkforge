@@ -775,6 +775,86 @@ function renderInteractive(d: InteractiveData, b: Block, ctx: RenderCtx, blockId
         `<g><animateTransform attributeName="transform" type="translate" from="0 0" to="${-(totalW - imgW).toFixed(0)} 0" dur="${dur}s" repeatCount="indefinite"/>${imgs}</g></svg></section>`
     }
 
+    /** 展开全文：原生 <details> 折叠，微信支持 */
+    case 'read-more': {
+      const summary = panels[0]?.html ?? panels[0]?.title ?? '点击阅读全文'
+      const full = panels[1]?.html ?? panels[1]?.title ?? ''
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<details><summary style="cursor:pointer;font-weight:600;color:${t.headingColor};font-size:${t.fontSize}px">${richText(summary)}</summary>` +
+        `<span leaf style="display:block;margin-top:10px;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight}">${richText(full)}</span>` +
+        `</details></section>`
+    }
+
+    /** 点赞：心形点击后 SMIL 填充变主色（无 JS，展示型） */
+    case 'like': {
+      const cap = panels[0]?.html ?? '点赞'
+      const heart = 'M12 21s-7.5-4.6-10-9.2C.7 9 2 5 5.5 5c2 0 3.2 1.1 4.5 2.4C11.3 6.1 12.5 5 14.5 5 18 5 19.3 9 17 11.8 14.5 16.4 12 21 12 21z'
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', padding: '16px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="60" height="60" style="display:inline-block;cursor:pointer">` +
+        `<path d="${heart}" fill="${t.colorMuted}">` +
+        `<animate attributeName="fill" to="${t.colorPrimary}" begin="touchstart; click" dur="0.2s" fill="freeze"/></path></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(cap)}</span></section>`
+    }
+
+    /** 星级评分：默认点亮 value 颗，点击后亮星重播填充动画（展示型） */
+    case 'rating': {
+      const count = Math.max(1, Math.min(10, d.count ?? 5))
+      const val = Math.max(0, Math.min(count, d.value ?? count))
+      const W = 30, gap = 6
+      const totalW = count * (W + gap)
+      const stars = Array.from({ length: count }, (_, i) => {
+        const lit = i < val
+        return `<text x="${i * (W + gap) + W / 2}" y="${W * 0.82}" text-anchor="middle" font-size="${W}" fill="${lit ? t.colorPrimary : t.colorMuted}">★` +
+          (lit ? `<animate attributeName="fill" to="${t.colorPrimary}" begin="touchstart; click" dur="0.15s" fill="freeze"/>` : '') +
+          `</text>`
+      }).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', padding: '14px' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${W}" width="100%" height="${W}" style="display:block;max-width:${totalW}px;margin:0 auto">${stars}</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(panels[0]?.html ?? `${val}/${count}`)}</span></section>`
+    }
+
+    /** 图片放大：点击后 SMIL 轻微放大反馈（无 JS） */
+    case 'zoom': {
+      const src = panels[0]?.imageUrl ? esc(panels[0].imageUrl) : ''
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 220
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', overflow: 'hidden' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;border-radius:${px(t.radius)};cursor:pointer">` +
+        `<image href="${src}" xlink:href="${src}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice">` +
+        `<animateTransform attributeName="transform" type="scale" values="1;1.25;1" begin="touchstart; click" dur="0.6s" fill="freeze" additive="sum"/></image></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击放大')}</span></section>`
+    }
+
+    /** 打字机：点击后逐字显现（SVG tspan + SMIL set，无 JS） */
+    case 'typewriter': {
+      const raw = (panels[0]?.html ?? panels[0]?.title ?? '').replace(/<[^>]+>/g, '')
+      const chars = Array.from(raw).slice(0, 48)
+      const spans = chars.map((ch, i) =>
+        `<tspan opacity="0">${esc(ch)}<set attributeName="opacity" to="1" begin="touchstart+${(i * 0.06).toFixed(2)}s; click+${(i * 0.06).toFixed(2)}s" dur="0.01s" fill="freeze"/></tspan>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '16px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 40" width="100%" height="40" style="display:block">` +
+        `<text x="0" y="26" font-size="18" fill="${t.colorText}">${spans}</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击播放打字效果')}</span></section>`
+    }
+
+    /** 开关：点击后轨道变主色 + 滑块右移（展示型，无 JS） */
+    case 'switch': {
+      const onL = d.onLabel ?? '开', offL = d.offLabel ?? '关'
+      const W = 64, H = 32
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', padding: '14px' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer;vertical-align:middle">` +
+        `<rect x="0" y="0" width="${W}" height="${H}" rx="${H / 2}" fill="${t.colorSurface}">` +
+        `<animate attributeName="fill" to="${t.colorPrimary}" begin="touchstart; click" dur="0.2s" fill="freeze"/></rect>` +
+        `<circle cx="${H / 2}" cy="${H / 2}" r="${H / 2 - 4}" fill="#ffffff">` +
+        `<animate attributeName="cx" to="${W - H / 2}" begin="touchstart; click" dur="0.2s" fill="freeze"/></circle></svg>` +
+        `<span leaf style="display:inline-block;margin-left:8px;vertical-align:middle;font-size:${t.fontSize - 1}px;color:${t.colorText}">${esc(onL + ' / ' + offL)}</span></section>`
+    }
+
     default:
       return ''
   }
