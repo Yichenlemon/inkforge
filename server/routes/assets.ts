@@ -62,12 +62,12 @@ assetsRouter.post('/upload', upload.single('file'), asyncHandler(async (req, res
   return ok(res, { asset: { id, url, kind, width, height, bytes: buf.length, name: file.originalname } })
 }))
 
-/** 外链抓取入库（粘贴网络图片时保证后续可用） */
+/** 外链导入入库（粘贴网络图片时保证后续可用） */
 assetsRouter.post('/fetch-url', asyncHandler(async (req, res) => {
   const url = str(req.body?.url)
   if (!/^https?:\/\//.test(url)) badRequest('只支持 http(s) 链接')
   const res2 = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 InkForge' } })
-  if (!res2.ok) badRequest(`抓取失败：HTTP ${res2.status}`)
+  if (!res2.ok) badRequest(`导入失败：HTTP ${res2.status}`)
   const buf = Buffer.from(await res2.arrayBuffer())
   const mime = res2.headers.get('content-type') ?? 'image/jpeg'
   const ext = extOf(mime.split(';')[0], url.split('?')[0])
@@ -125,12 +125,12 @@ async function resolveInput(body: any): Promise<{ buf: Buffer; assetId?: string 
     const file = path.join(UPLOAD_DIR, path.basename(str(body.url)))
     return { buf: fs.readFileSync(file) }
   }
-  // 外链图片：抓取后处理（用于编辑器里直接修外部图）
+  // 外链图片：导入后处理（用于编辑器里直接修外部图）
   if (body?.url && /^https?:\/\//.test(str(body.url))) {
     try {
       const r = await fetch(str(body.url), { headers: { 'User-Agent': 'Mozilla/5.0 InkForge' } })
       if (r.ok) return { buf: Buffer.from(await r.arrayBuffer()) }
-    } catch { /* 抓取失败 → 返回 null */ }
+    } catch { /* 导入失败 → 返回 null */ }
   }
   return null
 }

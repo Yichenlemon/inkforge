@@ -70,7 +70,7 @@ export function ImagePicker({ value, onChange, square = false, hint }: Props) {
       <div className="flex items-center gap-1.5 mt-1.5">
         <input className="input flex-1" placeholder="或直接粘贴图片地址" value={value ?? ''}
           onChange={(e) => onChange(e.target.value)} />
-        <button className="btn btn-soft btn-sm" title="抓取外链图片到服务器" onClick={() => setUrlOpen(true)}>
+        <button className="btn btn-soft btn-sm" title="导入外链图片到服务器" onClick={() => setUrlOpen(true)}>
           <LinkIcon size={12} />
         </button>
       </div>
@@ -78,9 +78,9 @@ export function ImagePicker({ value, onChange, square = false, hint }: Props) {
       <input ref={inputRef} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
 
-      <Modal open={urlOpen} onClose={() => setUrlOpen(false)} title="抓取外链图片" width={420}>
+      <Modal open={urlOpen} onClose={() => setUrlOpen(false)} title="导入外链图片" width={420}>
         <p className="text-[12.5px] text-ink-text-2 mb-3">
-          公众号正文不接受外部图片链接，抓取后会把图片存到服务器，发布时再上传到微信素材库。
+          公众号正文不接受外部图片链接，导入后会把图片存到服务器，发布时再上传到微信素材库。
         </p>
         <input className="input" placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} />
         <div className="flex justify-end gap-2 mt-4">
@@ -92,10 +92,10 @@ export function ImagePicker({ value, onChange, square = false, hint }: Props) {
               const res = await assetsApi.fetchUrl(url)
               onChange(res.asset.url, { width: res.asset.width, height: res.asset.height, id: res.asset.id })
               setUrlOpen(false); setUrl('')
-              toast('抓取成功', 'success')
-            } catch (e: any) { toast(e?.message ?? '抓取失败', 'error') }
+              toast('导入成功', 'success')
+            } catch (e: any) { toast(e?.message ?? '导入失败', 'error') }
             finally { setBusy(false) }
-          }}>抓取</button>
+          }}>导入</button>
         </div>
       </Modal>
     </div>

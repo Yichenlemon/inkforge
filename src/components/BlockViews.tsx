@@ -322,7 +322,7 @@ export function WechatEcoView({ block, data, tokens }: BlockViewProps<WechatEcoD
     try {
       const r = await wechatApi.fetchArticle(url.trim())
       if (!r.ok || !r.components?.length) {
-        toast(r.error ? `抓取失败：${r.error}` : '未提取到生态组件，请手动填写。', 'error')
+        toast(r.error ? `提取失败：${r.error}` : '未提取到生态组件，请手动填写。', 'error')
         return
       }
       const c = r.components.find((x: any) => x.type === 'miniprogram') ?? r.components[0]
@@ -330,9 +330,9 @@ export function WechatEcoView({ block, data, tokens }: BlockViewProps<WechatEcoD
         ecoType: c.type === 'channels' ? 'channels' : 'miniprogram',
         appId: c.appId, path: c.path, title: c.title, imageUrl: c.imageUrl, snippet: c.snippet,
       })
-      toast('已从文章抓取组件信息', 'success')
+      toast('已从文章提取组件信息', 'success')
     } catch (e: any) {
-      toast(`抓取失败：${e?.message ?? e}`, 'error')
+      toast(`提取失败：${e?.message ?? e}`, 'error')
     } finally {
       setImporting(false)
     }
@@ -381,7 +381,7 @@ export function WechatEcoView({ block, data, tokens }: BlockViewProps<WechatEcoD
         <div className="flex gap-1.5">
           <input className="input flex-1" placeholder="粘贴已保存的公众号文章链接" value={url} onChange={(e) => setUrl(e.target.value)} />
           <button className="btn btn-soft btn-sm" onClick={fetchFromUrl} disabled={importing}>
-            {importing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} 抓取
+            {importing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} 提取
           </button>
         </div>
         <div className="text-[10.5px] text-ink-text-3">秀米 / 135 等同行的真实做法：在公众号后台插入组件并保存文章，复制链接粘贴此处即可回填 appid / 路径 / 封面。</div>

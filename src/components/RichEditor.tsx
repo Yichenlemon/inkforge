@@ -20,7 +20,6 @@ import { useUI } from '../store/useUI.js'
 import { makeBlock, type Block } from '../../shared/types.js'
 import { COMPONENTS_BY_CATEGORY, searchComponents } from '../lib/components.js'
 import { searchIllustrations } from '../lib/illustrations.js'
-import { yibanApi } from '../lib/api.js'
 
 const HIGHLIGHT_COLORS = ['#FFF3B0', '#FFD9D9', '#D9F2E6', '#DCE8FF', '#EFDCFF', '#FFE7CC', 'transparent']
 
@@ -277,7 +276,7 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
   const run = (fn: (ed: Editor) => void) => { fn(editor); onChange(editor.getHTML()) }
   const toggleMenu = (m: typeof menu) => setMenu(menu === m ? null : m)
 
-  const [insertTab, setInsertTab] = useState<'block' | 'component' | 'style' | 'asset'>('block')
+  const [insertTab, setInsertTab] = useState<'block' | 'component' | 'asset'>('block')
   /** 在选中区块之后插入一批区块 */
   const insertAfter = (blocks: Block[]) => {
     const id = useUI.getState().selectedId
@@ -500,7 +499,7 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
         <Pop wide>
           <div className="flex gap-1 mb-2 border-b border-ink-line pb-1.5">
             {([
-              ['block', '区块'], ['component', '组件'], ['style', '样式库'], ['asset', '素材'],
+              ['block', '区块'], ['component', '组件'], ['asset', '素材'],
             ] as const).map(([t, l]) => (
               <button key={t} onClick={() => setInsertTab(t)}
                 className={`px-2 py-1 rounded text-[11.5px] transition-colors ${insertTab === t ? 'bg-[#2C6BED]/10 text-[#2C6BED] font-semibold' : 'text-ink-text-2 hover:bg-black/[0.05]'}`}>
@@ -551,7 +550,7 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
           )}
 
           {insertTab === 'component' && <ComponentInsert onInsert={insertAfter} />}
-          {insertTab === 'style' && <YibanInsert onInsert={insertAfter} />}
+          
           {insertTab === 'asset' && <AssetInsert onInsert={insertAfter} />}
         </Pop>
       )}
@@ -643,38 +642,6 @@ function ComponentInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
   )
 }
 
-/* --- 插入：样式库（壹伴 16,000+ 样式） --- */
-function YibanInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {
-  const [items, setItems] = useState<any[]>([])
-  const [q, setQ] = useState('')
-  const [loading, setLoading] = useState(false)
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    yibanApi.list(q, 1, 40).then((r: any) => { if (alive) setItems(r.items ?? []) })
-      .catch(() => { if (alive) setItems([]) })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [q])
-  return (
-    <div>
-      <input className="input mb-2" placeholder="搜索样式库…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
-        {items.map((m) => (
-          <button key={m.id} title={`${m.desc?.slice(0, 20) || '样式'} · 点击插入`} onClick={() => onInsert([makeBlock('html', { html: m.detail }, { marginTop: 8, marginBottom: 16 })])}
-            className="rounded border border-ink-line overflow-hidden text-left hover:border-[#2C6BED]">
-            <div className="h-16 overflow-hidden bg-white pointer-events-none">
-              <div className="origin-top-left" style={{ transform: 'scale(0.5)', width: '200%' }} dangerouslySetInnerHTML={{ __html: m.detail }} />
-            </div>
-            <div className="px-1.5 py-1 text-[11px] text-ink-text-2 truncate border-t border-ink-line">{m.desc?.slice(0, 16) || '样式'}</div>
-          </button>
-        ))}
-      </div>
-      {loading && <div className="text-[11px] text-ink-text-3 mt-1">加载中…</div>}
-      {!loading && !items.length && <div className="text-[11px] text-ink-text-3 py-3 text-center">没有匹配的样式</div>}
-    </div>
-  )
-}
 
 /* --- 插入：素材（内置 SVG 插画） --- */
 function AssetInsert({ onInsert }: { onInsert: (b: Block[]) => void }) {

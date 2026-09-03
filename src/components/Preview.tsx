@@ -28,7 +28,7 @@ export function Preview(props: PreviewProps) {
 
   const docHtml = useMemo(() => {
     const body = props.html ?? ''
-    // 深色模式模拟（壹伴「深色模式预览」对标）：页面反色 + 图片二次反色还原
+    // 深色模式模拟：页面反色 + 图片二次反色还原
     const darkCss = darkSim
       ? `body{background:#111 !important;} #page{filter:invert(1) hue-rotate(180deg);} #page img,#page video,#page iframe{filter:invert(1) hue-rotate(180deg);}`
       : ''

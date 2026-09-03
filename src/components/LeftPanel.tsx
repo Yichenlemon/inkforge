@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import {
   Search, Plus, Trash2, Upload, LayoutGrid, ListTree, Library, Image as ImageIcon,
-  FileText, Package, Copy, Download, Loader2, RefreshCw, Scissors, Sparkles, Star, GripVertical,
+  FileText, Package, Copy, Download, Loader2, RefreshCw, Scissors, Star, GripVertical,
 } from 'lucide-react'
 import type { Block, AssetRecord } from '../../shared/types.js'
 import { getTheme } from '../../shared/themes.js'
@@ -14,10 +14,10 @@ import {
   ILLUSTRATIONS_BY_CATEGORY, searchIllustrations, tintIllustration,
 } from '../lib/illustrations.js'
 import { BUILTIN_TEMPLATES } from '../lib/templates.js'
-import { assetsApi, libraryApi, convertApi, onlineApi, yibanApi } from '../lib/api.js'
+import { assetsApi, libraryApi, convertApi, onlineApi } from '../lib/api.js'
 import { toast, Tabs, Empty, Spinner, Select } from '../lib/ui.js'
 
-type Tab = 'components' | 'yiban' | 'assets' | 'outline' | 'library'
+type Tab = 'components' | 'assets' | 'outline' | 'library'
 
 export function LeftPanel() {
   const tab = useUI((s) => s.leftTab)
@@ -29,14 +29,12 @@ export function LeftPanel() {
         onChange={setTab}
         tabs={[
           { value: 'components', label: '组件', icon: <LayoutGrid size={12} /> },
-          { value: 'yiban', label: '样式库', icon: <Sparkles size={12} /> },
           { value: 'assets', label: '素材', icon: <ImageIcon size={12} /> },
           { value: 'outline', label: '大纲', icon: <ListTree size={12} /> },
           { value: 'library', label: '复用', icon: <Library size={12} /> },
         ]}
       />
       {tab === 'components' && <ComponentsTab />}
-      {tab === 'yiban' && <YibanTab />}
       {tab === 'assets' && <AssetsTab />}
       {tab === 'outline' && <OutlineTab />}
       {tab === 'library' && <LibraryTab />}
@@ -143,149 +141,6 @@ function cloneBlock(b: Block): Block {
   return JSON.parse(JSON.stringify({ ...b, id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4) }))
 }
 
-/* ------------------------------------------------------------------ */
-/* 壹伴样式库（16,000+ 微信兼容内联样式，服务端分页）                       */
-/* ------------------------------------------------------------------ */
-
-interface YibanItem {
-  id: number
-  desc: string
-  tags: string[]
-  type: string
-  free: boolean
-  category: string
-  detail: string
-}
-
-function YibanTab() {
-  const [kw, setKw] = useState('')
-  const [appliedKw, setAppliedKw] = useState('')
-  const [cat, setCat] = useState('全部')
-  const [cats, setCats] = useState<{ name: string; count: number }[]>([])
-  const [total, setTotal] = useState(0)
-  const [items, setItems] = useState<YibanItem[]>([])
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [favs, setFavs] = useState<number[]>(() => {
-    try { return JSON.parse(localStorage.getItem('inkforge-yiban-favs') ?? '[]') } catch { return [] }
-  })
-  const [favOnly, setFavOnly] = useState(false)
-  const doc = useDoc((s) => s.doc)
-  const insertBlocks = useDoc((s) => s.insertBlocks)
-  const selectedId = useUI((s) => s.selectedId)
-
-  useEffect(() => {
-    yibanApi.categories()
-      .then((r: any) => setCats(r.categories ?? []))
-      .catch(() => setCats([]))
-  }, [])
-
-  const load = useCallback(async (p: number, c: string, k: string, ids = '') => {
-    setLoading(true)
-    try {
-      const r = await yibanApi.list(k, p, 24, c, ids)
-      setItems(r.items ?? [])
-      setTotal(r.total ?? 0)
-      setPage(p)
-    } catch { setItems([]); setTotal(0) }
-    finally { setLoading(false) }
-  }, [])
-
-  useEffect(() => { void load(1, '全部', '') }, [load])
-
-  const toggleFav = (id: number) => {
-    setFavs((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev]
-      try { localStorage.setItem('inkforge-yiban-favs', JSON.stringify(next)) } catch { /* ignore */ }
-      // 若当前处于收藏筛选，取消收藏后应从列表移除
-      if (favOnly && !next.includes(id)) setItems((its) => its.filter((m) => m.id !== id))
-      return next
-    })
-  }
-
-  const showFavs = () => {
-    setFavOnly(true)
-    setCat('全部')
-    void load(1, '全部', appliedKw, favs.slice(0, 300).join(','))
-  }
-  const showAll = () => {
-    setFavOnly(false)
-    void load(1, cat, appliedKw)
-  }
-
-  const insert = (m: YibanItem) => {
-    const idx = doc.blocks.findIndex((b) => b.id === selectedId)
-    insertBlocks([{ id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), type: 'html', data: { html: m.detail }, style: { marginTop: 8, marginBottom: 16 } } as Block], idx >= 0 ? idx + 1 : undefined)
-    toast(`已插入「${m.desc?.slice(0, 12) || '样式'}」`)
-  }
-
-  const totalPages = Math.max(1, Math.ceil(total / 24))
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="p-2.5 border-b border-ink-line space-y-2 shrink-0">
-        <div className="flex gap-1.5">
-          <div className="relative flex-1">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-text-3" />
-            <input className="input pl-7" placeholder="搜索 16,000+ 样式（回车）…" value={kw}
-              onChange={(e) => setKw(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { setAppliedKw(kw.trim()); setFavOnly(false); void load(1, cat, kw.trim()) } }} />
-          </div>
-          <button className={`btn btn-sm px-2 shrink-0 ${favOnly ? 'btn-primary' : 'btn-soft'}`}
-            title="收藏的样式" onClick={() => (favOnly ? showAll() : showFavs())}>
-            <Star size={13} className={favOnly ? 'fill-current' : ''} />
-          </button>
-        </div>
-        <div className="flex gap-1 overflow-x-auto pb-1 -mb-1">
-          {[{ name: '全部', count: cats.reduce((a, c) => a + c.count, 0) }, ...cats].map((c) => (
-            <button key={c.name} onClick={() => { setCat(c.name); setFavOnly(false); void load(1, c.name, appliedKw) }}
-              className={`chip whitespace-nowrap shrink-0 ${cat === c.name && !favOnly ? 'bg-[#2C6BED] text-white' : 'bg-black/[0.05] text-ink-text-3 hover:bg-black/[0.08]'}`}>
-              {c.name}{c.count ? ` ${c.count}` : ''}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-2.5">
-        {loading && <div className="py-6 flex justify-center"><Spinner /></div>}
-        {!loading && !items.length && <Empty text={favOnly ? '还没有收藏样式，点击卡片右上角星标收藏' : '没有匹配的样式'} />}
-        <div className="grid grid-cols-2 gap-1.5">
-          {items.map((m) => (
-            <div key={m.id} className="group/yb relative rounded-lg border border-ink-line overflow-hidden text-left hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] transition-colors">
-              <button title={`${m.desc?.slice(0, 20) || '样式'} — 点击插入`} onClick={() => insert(m)} className="block w-full text-left">
-                <div className="h-20 overflow-hidden relative bg-white pointer-events-none select-none">
-                  <div className="origin-top-left" style={{ transform: 'scale(0.55)', width: '182%' }} dangerouslySetInnerHTML={{ __html: m.detail }} />
-                </div>
-                <div className="px-1.5 py-1 border-t border-ink-line flex items-center gap-1">
-                  <span className="text-[10px] px-1 py-px rounded bg-black/[0.05] text-ink-text-3 shrink-0">{m.category}</span>
-                  <span className="text-[11px] text-ink-text-2 truncate flex-1">{m.desc?.slice(0, 16) || '未命名样式'}</span>
-                </div>
-              </button>
-              <button title={favs.includes(m.id) ? '取消收藏' : '收藏'}
-                onClick={(e) => { e.stopPropagation(); toggleFav(m.id) }}
-                className={`absolute top-1 right-1 w-5 h-5 rounded-full bg-white/90 border border-ink-line flex items-center justify-center shadow-sm transition-opacity ${favs.includes(m.id) ? 'opacity-100' : 'opacity-0 group-hover/yb:opacity-100'}`}>
-                <Star size={11} className={favs.includes(m.id) ? 'text-[#E8A33D] fill-[#E8A33D]' : 'text-ink-text-3'} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-2 border-t border-ink-line shrink-0 space-y-1.5">
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center gap-2">
-            <button className="btn btn-ghost btn-xs" disabled={page <= 1} onClick={() => void load(page - 1, cat, appliedKw, favOnly ? favs.slice(0, 300).join(',') : '')}>上一页</button>
-            <span className="text-[11px] text-ink-text-3">{page} / {totalPages} 页 · 共 {total.toLocaleString()} 条</span>
-            <button className="btn btn-ghost btn-xs" disabled={page >= totalPages} onClick={() => void load(page + 1, cat, appliedKw, favOnly ? favs.slice(0, 300).join(',') : '')}>下一页</button>
-          </div>
-        )}
-        <div className="text-[10.5px] text-ink-text-3">
-          样式来自壹伴样式中心抓取，插入为原生 HTML 块，导出时原样保留内联样式。含远程图片的样式需图片可访问。
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /* ------------------------------------------------------------------ */
 /* 素材库                                                               */

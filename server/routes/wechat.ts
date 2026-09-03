@@ -32,7 +32,7 @@ wechatRouter.post('/wechat/check', asyncHandler(async (req, res) => {
   return ok(res, await checkAccount(accountId))
 }))
 
-/** 从已保存的公众号文章链接抓取微信生态组件元数据（小程序 / 视频号） */
+/** 从已保存的公众号文章链接提取微信生态组件元数据（小程序 / 视频号） */
 wechatRouter.post('/wechat/fetch-article', asyncHandler(async (req, res) => {
   const url = str(req.body?.url)
   if (!url) badRequest('缺少文章链接')

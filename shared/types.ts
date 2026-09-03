@@ -173,7 +173,7 @@ export interface WechatEcoData {
   imageUrl?: string
   /** 兜底跳转链接 */
   url?: string
-  /** 从公众号文章抓取到的原始组件标签，导出时回写为注释供手动粘贴 */
+  /** 从公众号文章提取到的原始组件标签，导出时回写为注释供手动粘贴 */
   snippet?: string
 }
 

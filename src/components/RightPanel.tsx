@@ -411,7 +411,7 @@ function TypeSpecificProps({ block }: { block: Block }) {
 function WechatEcoPanel({ block }: { block: Block }) {
   return (
     <div className="text-[12px] text-ink-text-3 leading-relaxed p-1">
-      该组件在画布中直接编辑：选择类型、填写 appid / 路径 / 封面，或从公众号文章链接一键抓取。
+      该组件在画布中直接编辑：选择类型、填写 appid / 路径 / 封面，或从公众号文章链接一键提取。
       导出源码中会附带可直接粘贴到公众号后台的规范微信组件代码。
     </div>
   )

@@ -144,7 +144,7 @@ function TypesetTab({ blocks, onApply }: { blocks: Block[]; onApply: (b: Block[]
     finally { setBusy(false) }
   }
 
-  /** 壹伴「一键排版」对标：推荐配置（中西文空格 + 合并标点）整篇直接应用 */
+  /** 一键排版：推荐配置（中西文空格 + 合并标点）整篇直接应用 */
   const oneClick = () => apply(true, { autoSpacing: true, dedupe: true, halfWidth: false })
 
   return (

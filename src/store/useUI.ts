@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type LeftTab = 'components' | 'yiban' | 'assets' | 'outline' | 'library'
+export type LeftTab = 'components' | 'assets' | 'outline' | 'library'
 export type RightTab = 'block' | 'style' | 'theme' | 'doc'
 export type ViewMode = 'edit' | 'preview' | 'code'
 export type Page = 'home' | 'editor'
