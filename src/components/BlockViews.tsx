@@ -906,6 +906,9 @@ const IX_LABEL: Record<string, string> = {
   longpress: '长按查看', flip: '点击翻牌', 'accordion-click': '点击展开', tab: '点击切换',
   carousel: '图片轮播', progress: '进度条', marquee: '图片跑马灯',
   'read-more': '展开全文', like: '点赞', rating: '星级评分', zoom: '图片放大', typewriter: '打字机', switch: '开关',
+  'progress-ring': '环形进度', tooltip: '点击提示', hotzone: '图片标注', 'before-after': '前后对比',
+  faq: '多问答折叠', confetti: '点击撒花', loading: '加载三点', soundwave: '声波', poll: '投票',
+  chat: '逐条对话', badge: '角标弹出', countdown: '倒计时', 'marquee-text': '文字跑马灯', 'reveal-fade': '渐显文字',
 }
 
 export function InteractiveView({ block, data, tokens }: BlockViewProps<InteractiveData>) {

@@ -27,6 +27,20 @@ const blocks: Block[] = [
   makeBlock('interactive', { kind: 'zoom', panels: [{ imageUrl: IMG(1) }], width: 677, height: 220 }),
   makeBlock('interactive', { kind: 'typewriter', panels: [{ html: '欢迎关注我们的公众号' }] }),
   makeBlock('interactive', { kind: 'switch', panels: [{ html: '通知' }], onLabel: '开', offLabel: '关' }),
+  makeBlock('interactive', { kind: 'progress-ring', panels: [{ html: '70%' }], progress: 0.7, width: 200, height: 200 }),
+  makeBlock('interactive', { kind: 'tooltip', panels: [{ title: '说明' }, { html: '提示内容' }] }),
+  makeBlock('interactive', { kind: 'hotzone', panels: [{ imageUrl: IMG(1) }, { html: '标注说明' }], width: 677, height: 220 }),
+  makeBlock('interactive', { kind: 'before-after', panels: [{ imageUrl: IMG(1) }, { imageUrl: IMG(2) }], width: 677, height: 240 }),
+  makeBlock('interactive', { kind: 'faq', panels: [{ title: 'Q1', html: 'A1' }, { title: 'Q2', html: 'A2' }] }),
+  makeBlock('interactive', { kind: 'confetti', panels: [{ html: '恭喜' }], width: 300, height: 200 }),
+  makeBlock('interactive', { kind: 'loading', panels: [{ html: '加载中' }] }),
+  makeBlock('interactive', { kind: 'soundwave', panels: [{ html: '音频' }], width: 677, height: 80 }),
+  makeBlock('interactive', { kind: 'poll', panels: [{ title: 'A', html: '65' }, { title: 'B', html: '35' }], width: 677 }),
+  makeBlock('interactive', { kind: 'chat', panels: [{ html: '你好' }, { html: '新功能' }, { html: '逐条查看' }] }),
+  makeBlock('interactive', { kind: 'badge', panels: [{ html: 'NEW' }], width: 120, height: 120 }),
+  makeBlock('interactive', { kind: 'countdown', panels: [{ html: '10' }], width: 160, height: 160 }),
+  makeBlock('interactive', { kind: 'marquee-text', panels: [{ html: '这是一条滚动播报文案' }] }),
+  makeBlock('interactive', { kind: 'reveal-fade', panels: [{ html: '渐显的内容' }] }),
 ]
 
 const doc = { themeId: 'clean', title: 'smoke', blocks, meta: {} } as any

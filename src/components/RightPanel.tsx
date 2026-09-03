@@ -356,21 +356,31 @@ function TypeSpecificProps({ block }: { block: Block }) {
                 { value: 'rating', label: '星级评分' }, { value: 'zoom', label: '图片放大' },
                 { value: 'typewriter', label: '打字机' }, { value: 'switch', label: '开关' },
                 { value: 'scratch', label: '刮刮卡（降级）' },
+                { value: 'progress-ring', label: '环形进度' }, { value: 'tooltip', label: '点击提示' },
+                { value: 'hotzone', label: '图片标注' }, { value: 'before-after', label: '前后对比' },
+                { value: 'faq', label: '多问答折叠' }, { value: 'confetti', label: '点击撒花' },
+                { value: 'loading', label: '加载三点' }, { value: 'soundwave', label: '声波' },
+                { value: 'poll', label: '投票' }, { value: 'chat', label: '逐条对话' },
+                { value: 'badge', label: '角标弹出' }, { value: 'countdown', label: '倒计时' },
+                { value: 'marquee-text', label: '文字跑马灯' }, { value: 'reveal-fade', label: '渐显文字' },
               ]} />
           </Field>
           <Field label="提示语"><input className="input" value={d.hint ?? ''} onChange={(e) => up({ hint: e.target.value })} /></Field>
-          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee' || d.kind === 'zoom') && (
+          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee' || d.kind === 'zoom' || d.kind === 'progress-ring' || d.kind === 'before-after' || d.kind === 'hotzone' || d.kind === 'confetti' || d.kind === 'badge' || d.kind === 'countdown' || d.kind === 'marquee-text') && (
             <>
               <Field label="宽度"><NumberInput value={d.width ?? 677} onChange={(v) => up({ width: v })} min={120} /></Field>
-              <Field label="高度"><NumberInput value={d.height ?? (d.kind === 'flip' ? 200 : d.kind === 'carousel' ? 240 : 120)} onChange={(v) => up({ height: v })} min={60} /></Field>
+              <Field label="高度"><NumberInput value={d.height ?? (d.kind === 'flip' ? 200 : d.kind === 'carousel' ? 240 : d.kind === 'marquee' || d.kind === 'marquee-text' ? 40 : d.kind === 'badge' ? 120 : 120)} onChange={(v) => up({ height: v })} min={40} /></Field>
             </>
           )}
-          {d.kind === 'progress' && (
+          {d.kind === 'poll' && (
+            <Field label="提示语"><input className="input" value={d.hint ?? ''} onChange={(e) => up({ hint: e.target.value })} /></Field>
+          )}
+          {d.kind === 'progress' || d.kind === 'progress-ring' ? (
             <Field label="目标比例">
-              <NumberInput value={Math.round((d.progress ?? 0.85) * 100)} min={0} max={100} suffix="%"
+              <NumberInput value={Math.round((d.progress ?? (d.kind === 'progress-ring' ? 0.7 : 0.85)) * 100)} min={0} max={100} suffix="%"
                 onChange={(v) => up({ progress: Math.max(0, Math.min(1, (v ?? 85) / 100)) })} />
             </Field>
-          )}
+          ) : null}
           {d.kind === 'rating' && (
             <>
               <Field label="星级数量"><NumberInput value={d.count ?? 5} min={1} max={10} onChange={(v) => up({ count: Math.max(1, Math.min(10, v ?? 5)) })} /></Field>

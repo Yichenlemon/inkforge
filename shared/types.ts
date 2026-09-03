@@ -399,6 +399,8 @@ export type InteractiveKind =
   | 'slider' | 'click-reveal' | 'scratch' | 'longpress' | 'flip' | 'accordion-click' | 'tab'
   | 'carousel' | 'progress' | 'marquee'
   | 'read-more' | 'like' | 'rating' | 'zoom' | 'typewriter' | 'switch'
+  | 'progress-ring' | 'tooltip' | 'hotzone' | 'before-after' | 'faq' | 'confetti'
+  | 'loading' | 'soundwave' | 'poll' | 'chat' | 'badge' | 'countdown' | 'marquee-text' | 'reveal-fade'
 
 export interface InteractiveData {
   kind: InteractiveKind

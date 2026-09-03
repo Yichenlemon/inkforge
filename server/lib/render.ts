@@ -855,6 +855,217 @@ function renderInteractive(d: InteractiveData, b: Block, ctx: RenderCtx, blockId
         `<span leaf style="display:inline-block;margin-left:8px;vertical-align:middle;font-size:${t.fontSize - 1}px;color:${t.colorText}">${esc(onL + ' / ' + offL)}</span></section>`
     }
 
+    /** 环形进度：点击后 SMIL 描边 dashoffset 填充到目标比例（无 JS） */
+    case 'progress-ring': {
+      const pct = Math.max(0, Math.min(1, d.progress ?? 0.7))
+      const W = d.width ?? 200, H = d.height ?? 200
+      const cx = W / 2, cy = H / 2, r = Math.max(10, Math.min(W, H) / 2 - 12)
+      const circ = 2 * Math.PI * r
+      const off = (circ * (1 - pct)).toFixed(1)
+      const label = panels[0]?.html ?? `${Math.round(pct * 100)}%`
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;max-width:${W}px;margin:0 auto">` +
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${t.colorSurface}" stroke-width="12"/>` +
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${t.colorPrimary}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${circ.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})">` +
+        `<animate attributeName="stroke-dashoffset" from="${circ.toFixed(1)}" to="${off}" begin="touchstart; click" dur="1s" fill="freeze"/></circle>` +
+        `<text x="${cx}" y="${cy}" dy="0.35em" text-anchor="middle" font-size="${Math.max(14, r * 0.5)}" fill="${t.colorText}" font-weight="600">${esc(label.slice(0, 12))}</text>` +
+        `</svg></section>`
+    }
+
+    /** 点击提示：虚线胶囊触发，点击后下方气泡渐显（无 JS） */
+    case 'tooltip': {
+      const trig = panels[0]?.title ?? panels[0]?.html ?? '点击查看说明'
+      const tip = panels[1]?.html ?? panels[1]?.title ?? '这里是提示内容'
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<span leaf style="display:inline-block;padding:6px 14px;border:1px dashed ${t.colorPrimary};border-radius:999px;color:${t.colorPrimary};font-size:${t.fontSize - 1}px;cursor:pointer">${richText(trig)}</span>` +
+        `<span leaf style="display:block;margin-top:10px;opacity:0;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight};background-color:${t.colorSurface};border-radius:8px;padding:10px 12px;text-align:left">` +
+        `<set attributeName="opacity" to="1" begin="touchstart; click" dur="0.2s" fill="freeze"/>${richText(tip)}</span></section>`
+    }
+
+    /** 图片标注：图片下方点击渐显标注说明（无 JS） */
+    case 'hotzone': {
+      const src = panels[0]?.imageUrl ? esc(panels[0].imageUrl) : ''
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 220
+      const tip = panels[1]?.html ?? panels[1]?.title ?? '这是图片上的标注说明'
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        (src ? `<img src="${src}" width="100%" style="width:100%;display:block;border-radius:${px(t.radius)}"/>` : '') +
+        `<span leaf style="display:block;margin-top:8px;opacity:0;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight};background-color:${t.colorSurface};border-radius:8px;padding:8px 12px;text-align:left">` +
+        `<set attributeName="opacity" to="1" begin="touchstart; click" dur="0.2s" fill="freeze"/>${richText(tip)}</span>` +
+        `<span leaf style="display:block;margin-top:4px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '👆 点击图片下方查看标注')}</span></section>`
+    }
+
+    /** 前后对比：SVG 叠图，点击揭晓「处理后」覆盖「处理前」（无 JS，无需定位） */
+    case 'before-after': {
+      const before = panels[0]?.imageUrl ? esc(panels[0].imageUrl) : ''
+      const after = panels[1]?.imageUrl ? esc(panels[1].imageUrl) : ''
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 240
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;border-radius:${px(t.radius)};cursor:pointer">` +
+        (before ? `<image href="${before}" xlink:href="${before}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>` : '') +
+        (after ? `<image href="${after}" xlink:href="${after}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" opacity="0"><set attributeName="opacity" to="1" begin="touchstart; click" dur="0.3s" fill="freeze"/></image>` : '') +
+        `<text x="8" y="${H - 10}" font-size="13" fill="#ffffff" font-weight="600">${esc(d.hint ?? '点击查看对比')}</text>` +
+        `</svg></section>`
+    }
+
+    /** 多问答折叠：原生 <details> 多个 Q&A，微信支持（无 JS） */
+    case 'faq': {
+      const items = panels.map((p) =>
+        `<details style="margin-bottom:8px;background-color:${t.colorSurface};border-radius:${px(t.radius)};padding:10px 12px">` +
+        `<summary style="cursor:pointer;font-weight:600;color:${t.headingColor};font-size:${t.fontSize}px">${richText(p.title ?? '问题')}</summary>` +
+        `<span leaf style="display:block;margin-top:8px;font-size:${t.fontSize - 1}px;color:${t.colorText};line-height:${t.lineHeight}">${richText(p.html ?? '')}</span></details>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {})}">${items}</section>`
+    }
+
+    /** 点击撒花：SVG 粒子向外飞散 + 淡出（无 JS） */
+    case 'confetti': {
+      const cap = panels[0]?.html ?? '恭喜'
+      const W = d.width ?? 300, H = d.height ?? 200
+      const colors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF9F45']
+      const N = 12
+      let parts = ''
+      for (let i = 0; i < N; i++) {
+        const ang = (Math.PI * 2 * i) / N
+        const dx = (Math.cos(ang) * W * 0.4).toFixed(0)
+        const dy = (Math.sin(ang) * H * 0.4).toFixed(0)
+        const c = colors[i % colors.length]
+        parts += `<rect x="${W / 2 - 4}" y="${H / 2 - 4}" width="8" height="8" rx="2" fill="${c}" opacity="0">` +
+          `<animateTransform attributeName="transform" type="translate" from="0 0" to="${dx} ${dy}" begin="touchstart; click" dur="0.9s" fill="freeze"/>` +
+          `<animate attributeName="opacity" values="1;1;0" keyTimes="0;0.6;1" begin="touchstart; click" dur="0.9s" fill="freeze"/>` +
+          `</rect>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${parts}` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="20" fill="${t.colorPrimary}" font-weight="700">${esc(cap.slice(0, 12))}</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击撒花')}</span></section>`
+    }
+
+    /** 加载中三点：SMIL 自动循环呼吸（无 JS，自动播放） */
+    case 'loading': {
+      const cap = panels[0]?.html ?? '加载中…'
+      const W = 120, H = 40
+      const dots = [0, 1, 2].map((i) =>
+        `<circle cx="${W / 2 + (i - 1) * 22}" cy="${H / 2}" r="6" fill="${t.colorPrimary}">` +
+        `<animate attributeName="opacity" values="0.3;1;0.3" dur="1.2s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/></circle>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '14px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="120" height="${H}" style="display:inline-block">${dots}</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(cap)}</span></section>`
+    }
+
+    /** 声波：SMIL 柱条循环起伏（无 JS，自动播放） */
+    case 'soundwave': {
+      const cap = panels[0]?.html ?? '语音 / 音频'
+      const W = d.width ?? ctx.maxWidth, H = d.height ?? 80
+      const bars = 16
+      const bw = W / (bars * 1.6)
+      let rects = ''
+      for (let i = 0; i < bars; i++) {
+        const x = i * (bw * 1.6)
+        const h0 = 8 + (i % 4) * 6
+        rects += `<rect x="${x.toFixed(1)}" y="${(H / 2 - h0 / 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${h0}" rx="${(bw / 2).toFixed(1)}" fill="${t.colorPrimary}">` +
+          `<animate attributeName="height" values="${h0};${H - 10};${h0}" dur="1s" begin="${(i * 0.06).toFixed(2)}s" repeatCount="indefinite"/>` +
+          `<animate attributeName="y" values="${(H / 2 - h0 / 2).toFixed(1)};5;${(H / 2 - h0 / 2).toFixed(1)}" dur="1s" begin="${(i * 0.06).toFixed(2)}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', 'background-color': t.colorSurface, 'border-radius': px(t.radius), padding: '10px',
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">${rects}</svg>` +
+        `<span leaf style="display:block;margin-top:4px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(cap)}</span></section>`
+    }
+
+    /** 投票：SVG 柱状条，点击选项条填充到对应得票比例（无 JS） */
+    case 'poll': {
+      const opts = panels.length ? panels : [{ title: '选项 A' }, { title: '选项 B' }]
+      const W = d.width ?? ctx.maxWidth
+      const labelH = 18, rowH = 22, gap = 10
+      const Hh = opts.length * (labelH + rowH + gap)
+      const bars = opts.map((p, i) => {
+        const label = p.title ?? `选项 ${i + 1}`
+        const share = Math.max(0, Math.min(100, Number(p.html) || 0))
+        const y0 = i * (labelH + rowH + gap)
+        return `<text x="0" y="${y0 + labelH}" dy="0.35em" font-size="13" fill="${t.colorText}">${esc(label.slice(0, 12))}</text>` +
+          `<rect x="0" y="${y0 + labelH + 2}" width="${W}" height="${rowH}" rx="${rowH / 2}" fill="${t.colorSurface}"/>` +
+          `<rect x="0" y="${y0 + labelH + 2}" width="0" height="${rowH}" rx="${rowH / 2}" fill="${t.colorPrimary}">` +
+          `<animate attributeName="width" from="0" to="${(W * share / 100).toFixed(0)}" begin="touchstart; click" dur="0.6s" fill="freeze"/></rect>`
+      }).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}" width="100%" height="${Hh}" style="display:block">${bars}</svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击选项查看得票')}</span></section>`
+    }
+
+    /** 逐条对话：点击后气泡按时间差依次渐显（无 JS，单点触发时间轴） */
+    case 'chat': {
+      const bubbles = panels.length ? panels : [{ html: '你好！' }, { html: '这是我们新上线的功能～' }, { html: '点击逐条查看' }]
+      const lines = bubbles.map((p, i) =>
+        `<span leaf style="display:block;max-width:80%;margin:6px 0;padding:8px 12px;border-radius:12px;font-size:${t.fontSize - 1}px;line-height:${t.lineHeight};opacity:0;${i % 2 === 0 ? `background-color:${t.colorSurface};` : `background-color:${t.colorPrimary};color:#ffffff;margin-left:auto`}">` +
+        `<set attributeName="opacity" to="1" begin="touchstart+${(i * 0.8).toFixed(1)}s; click+${(i * 0.8).toFixed(1)}s" dur="0.2s" fill="freeze"/>${richText(p.html ?? p.title ?? '')}</span>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">${lines}` +
+        `<span leaf style="display:block;text-align:center;font-size:${t.fontSize - 2}px;color:${t.colorMuted};margin-top:6px">${richText(d.hint ?? '点击逐条显示对话')}</span></section>`
+    }
+
+    /** 角标弹出：点击后星形徽标缩放下弹（无 JS） */
+    case 'badge': {
+      const label = panels[0]?.html ?? panels[0]?.title ?? 'NEW'
+      const W = d.width ?? 120, H = d.height ?? 120
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', padding: '14px' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer">` +
+        `<g transform="translate(${W / 2} ${H / 2})">` +
+        `<path d="M0,-44 L12,-14 L44,-14 L18,8 L28,40 L0,20 L-28,40 L-18,8 L-44,-14 L-12,-14 Z" fill="${t.colorPrimary}">` +
+        `<animateTransform attributeName="transform" type="scale" values="0;1.2;1" begin="touchstart; click" dur="0.5s" fill="freeze" additive="sum"/></path>` +
+        `<text x="0" y="6" text-anchor="middle" font-size="16" fill="#ffffff" font-weight="700">${esc(label.slice(0, 8))}</text></g></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击弹出角标')}</span></section>`
+    }
+
+    /** 倒计时：点击后环形描边在 N 秒内逐渐清空（无 JS） */
+    case 'countdown': {
+      const secs = Math.max(3, Math.min(60, Number(panels[0]?.html) || 10))
+      const W = d.width ?? 160, H = d.height ?? 160
+      const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 12
+      const circ = 2 * Math.PI * r
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', padding: '14px' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:inline-block;cursor:pointer">` +
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${t.colorSurface}" stroke-width="10"/>` +
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${t.colorPrimary}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="0" transform="rotate(-90 ${cx} ${cy})">` +
+        `<animate attributeName="stroke-dashoffset" from="0" to="${circ.toFixed(1)}" begin="touchstart; click" dur="${secs}s" fill="freeze"/></circle>` +
+        `<text x="${cx}" y="${cy}" dy="0.35em" text-anchor="middle" font-size="${Math.max(16, r * 0.5)}" fill="${t.colorText}" font-weight="700">${secs}s</text></svg>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 1}px;color:${t.colorMuted}">${richText(d.hint ?? '点击开始倒计时')}</span></section>`
+    }
+
+    /** 文字跑马灯：SVG 文本横向无限滚动（无 JS，自动播放） */
+    case 'marquee-text': {
+      const text = (panels[0]?.html ?? panels[0]?.title ?? '这是一条滚动播报文案，用于公告、促销、提醒等场景。').replace(/<[^>]+>/g, '')
+      const H = d.height ?? 40
+      const W = d.width ?? ctx.maxWidth
+      const chars = Array.from(text).slice(0, 60).join('')
+      const textW = Math.max(W, chars.length * 16)
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        'text-align': 'center', overflow: 'hidden', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<text font-size="${t.fontSize}" fill="${t.colorText}" y="${H / 2}" dy="0.35em"><tspan><animateTransform attributeName="transform" type="translate" from="${W} 0" to="${-textW} 0" dur="8s" repeatCount="indefinite"/></tspan>${esc(chars)}</text>` +
+        `</svg></section>`
+    }
+
+    /** 渐显文字：点击后整段文字淡入（无 JS） */
+    case 'reveal-fade': {
+      const full = panels[0]?.html ?? panels[0]?.title ?? '点击后渐显的隐藏内容。'
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, {
+        padding: '14px', 'background-color': t.colorSurface, 'border-radius': px(t.radius),
+      })}">` +
+        `<span leaf style="display:block;opacity:0;font-size:${t.fontSize}px;line-height:${t.lineHeight};color:${t.colorText}">` +
+        `<set attributeName="opacity" to="1" begin="touchstart; click" dur="0.6s" fill="freeze"/>${richText(full)}</span>` +
+        `<span leaf style="display:block;margin-top:6px;font-size:${t.fontSize - 2}px;color:${t.colorMuted}">${richText(d.hint ?? '点击渐显内容')}</span></section>`
+    }
+
     default:
       return ''
   }
