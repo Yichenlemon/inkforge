@@ -120,6 +120,12 @@ export const libraryApi = {
   delAccount: (id: string) => api.del(`/accounts/${id}`),
 }
 
+export const yibanApi = {
+  list: (q = '', page = 1, size = 24, cat = '') =>
+    api.get(`/yiban?q=${encodeURIComponent(q)}&cat=${encodeURIComponent(cat)}&page=${page}&size=${size}`),
+  categories: () => api.get('/yiban/categories'),
+}
+
 export const wechatApi = {
   diagnose: (accountId: string) => api.post('/wechat/diagnose', { accountId }),
   check: (accountId: string) => api.post('/wechat/check', { accountId }),
