@@ -170,6 +170,16 @@ export const COMPONENTS: ComponentDef[] = [
     create: () => [B('interactive', { kind: 'tab', panels: [{ html: '内容一' }, { html: '内容二' }, { html: '内容三' }] })] },
   { id: 'ix-accordion', name: '点击展开', category: '交互', tags: ['accordion'], thumb: 'list',
     create: () => [B('interactive', { kind: 'accordion-click', panels: [{ title: '点击展开', html: '展开后的内容' }, { title: '再点一个', html: '更多内容' }] })] },
+  { id: 'ix-carousel', name: '图片轮播', category: '交互', tags: ['carousel', '轮播'], thumb: 'image',
+    create: () => [B('interactive', { kind: 'carousel', panels: [
+      { imageUrl: '', title: '图片一' }, { imageUrl: '', title: '图片二' }, { imageUrl: '', title: '图片三' },
+    ], width: 677, height: 240, hint: '自动轮播' })] },
+  { id: 'ix-progress', name: '进度条', category: '交互', tags: ['progress', '进度'], thumb: 'badge',
+    create: () => [B('interactive', { kind: 'progress', panels: [{ html: '85%' }], progress: 0.85, width: 677, height: 28 })] },
+  { id: 'ix-marquee', name: '图片跑马灯', category: '交互', tags: ['marquee', '滚动'], thumb: 'image',
+    create: () => [B('interactive', { kind: 'marquee', panels: [
+      { imageUrl: '', title: '图一' }, { imageUrl: '', title: '图二' }, { imageUrl: '', title: '图三' },
+    ], height: 120, hint: '横向滚动' })] },
   { id: 'gallery-scroll', name: '图片横滑', category: '交互', tags: ['gallery', '图片'], thumb: 'image',
     create: () => [B('gallery', { images: [], layout: 'scroll', radius: 8, gap: 8 })] },
   { id: 'gallery-grid3', name: '九宫格', category: '交互', tags: ['gallery', 'grid'], thumb: 'grid',

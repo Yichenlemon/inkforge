@@ -727,6 +727,54 @@ function renderInteractive(d: InteractiveData, b: Block, ctx: RenderCtx, blockId
         `<span leaf style="display:block;margin-top:8px;font-size:${t.fontSize}px;color:${t.colorText}">${richText(panels[1]?.html ?? panels[0]?.title ?? '')}</span></section>`
     }
 
+    /** 轮播图：SVG 多图离散透明度自动切换（无 JS） */
+    case 'carousel': {
+      const n = Math.max(1, panels.length)
+      const W = d.width ?? ctx.maxWidth
+      const H = d.height ?? 240
+      const cycle = Math.max(2, n * 2)
+      const imgs = panels.map((p, i) => {
+        const src = p.imageUrl ? esc(p.imageUrl) : ''
+        return `<image href="${src}" xlink:href="${src}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" opacity="${i === 0 ? 1 : 0}">` +
+          `<animate attributeName="opacity" values="1;0" keyTimes="0;${(1 / n).toFixed(3)}" calcMode="discrete" begin="${(i * (cycle / n)).toFixed(2)}s" dur="${cycle}s" repeatCount="indefinite"/></image>`
+      }).join('')
+      const dots = panels.map((_, i) =>
+        `<circle cx="${W / 2 + (i - (n - 1) / 2) * 14}" cy="${H - 12}" r="4" fill="${i === 0 ? t.colorPrimary : '#ffffff'}" opacity="0.85"/>`).join('')
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;border-radius:${px(t.radius)}">${imgs}${dots}</svg></section>`
+    }
+
+    /** 进度条：点击后 SMIL 填充到目标比例（无 JS） */
+    case 'progress': {
+      const pct = Math.max(0, Math.min(1, d.progress ?? 0.85))
+      const W = d.width ?? ctx.maxWidth
+      const H = d.height ?? 28
+      const label = panels[0]?.html ?? `${Math.round(pct * 100)}%`
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<rect x="0" y="0" width="${W}" height="${H}" rx="${H / 2}" fill="${t.colorSurface}"/>` +
+        `<rect x="0" y="0" width="0" height="${H}" rx="${H / 2}" fill="${t.colorPrimary}">` +
+        `<animate attributeName="width" from="0" to="${(W * pct).toFixed(1)}" begin="touchstart; click" dur="1s" fill="freeze"/></rect>` +
+        `<text x="${W / 2}" y="${H / 2}" dy="0.35em" text-anchor="middle" font-size="${Math.max(12, H - 10)}" fill="#ffffff" font-weight="600">${esc(label.slice(0, 12))}</text>` +
+        `</svg></section>`
+    }
+
+    /** 跑马灯：SVG 图片条横向无限滚动（无 JS） */
+    case 'marquee': {
+      const n = Math.max(1, panels.filter((p) => p.imageUrl).length)
+      const H = d.height ?? 120
+      const imgW = Math.max(80, Math.round((d.width ?? ctx.maxWidth) / 2))
+      const totalW = n * imgW
+      const imgs = panels.filter((p) => p.imageUrl).map((p, i) => {
+        const src = esc(p.imageUrl!)
+        return `<image href="${src}" xlink:href="${src}" x="${i * imgW}" y="0" width="${imgW}" height="${H}" preserveAspectRatio="xMidYMid slice"/>`
+      }).join('')
+      const dur = Math.max(4, n * 3)
+      return `<section data-block-id="${blockId}" style="${styleOf(b.style, { 'text-align': 'center', overflow: 'hidden' })}">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${H}" width="100%" height="${H}" style="display:block">` +
+        `<g><animateTransform attributeName="transform" type="translate" from="0 0" to="${-(totalW - imgW).toFixed(0)} 0" dur="${dur}s" repeatCount="indefinite"/>${imgs}</g></svg></section>`
+    }
+
     default:
       return ''
   }

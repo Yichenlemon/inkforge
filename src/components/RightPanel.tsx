@@ -350,15 +350,23 @@ function TypeSpecificProps({ block }: { block: Block }) {
                 { value: 'slider', label: '横向滑动' }, { value: 'click-reveal', label: '点击揭晓' },
                 { value: 'longpress', label: '长按查看' }, { value: 'flip', label: '点击翻牌' },
                 { value: 'tab', label: '点击切换' }, { value: 'accordion-click', label: '点击展开' },
+                { value: 'carousel', label: '图片轮播' }, { value: 'progress', label: '进度条' },
+                { value: 'marquee', label: '图片跑马灯' },
                 { value: 'scratch', label: '刮刮卡（降级）' },
               ]} />
           </Field>
           <Field label="提示语"><input className="input" value={d.hint ?? ''} onChange={(e) => up({ hint: e.target.value })} /></Field>
-          {d.kind === 'flip' && (
+          {(d.kind === 'flip' || d.kind === 'carousel' || d.kind === 'marquee') && (
             <>
-              <Field label="宽度"><NumberInput value={d.width ?? 320} onChange={(v) => up({ width: v })} min={120} /></Field>
-              <Field label="高度"><NumberInput value={d.height ?? 200} onChange={(v) => up({ height: v })} min={120} /></Field>
+              <Field label="宽度"><NumberInput value={d.width ?? 677} onChange={(v) => up({ width: v })} min={120} /></Field>
+              <Field label="高度"><NumberInput value={d.height ?? (d.kind === 'flip' ? 200 : d.kind === 'carousel' ? 240 : 120)} onChange={(v) => up({ height: v })} min={60} /></Field>
             </>
+          )}
+          {d.kind === 'progress' && (
+            <Field label="目标比例">
+              <NumberInput value={Math.round((d.progress ?? 0.85) * 100)} min={0} max={100} suffix="%"
+                onChange={(v) => up({ progress: Math.max(0, Math.min(1, (v ?? 85) / 100)) })} />
+            </Field>
           )}
         </>
       )

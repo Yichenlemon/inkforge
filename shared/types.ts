@@ -397,6 +397,7 @@ export interface QrcodeData {
 
 export type InteractiveKind =
   | 'slider' | 'click-reveal' | 'scratch' | 'longpress' | 'flip' | 'accordion-click' | 'tab'
+  | 'carousel' | 'progress' | 'marquee'
 
 export interface InteractiveData {
   kind: InteractiveKind
@@ -407,6 +408,8 @@ export interface InteractiveData {
   direction?: 'horizontal' | 'vertical'
   width?: number
   height?: number
+  /** 进度条目标比例 0~1（progress 专用） */
+  progress?: number
 }
 
 export interface HtmlData {
