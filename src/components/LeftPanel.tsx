@@ -105,7 +105,22 @@ function ComponentsTab() {
             <div className="grid grid-cols-2 gap-1.5">
               {g.items.map((c) => (
                 <button key={c.id} onClick={() => insert(c.id)} title={c.name}
-                  className="rounded-lg border border-ink-line p-2 text-left hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] transition-colors">
+                  draggable
+                  onDragStart={(e) => {
+                    // 拖到画布：携带组件 id 与预览标题
+                    e.dataTransfer.effectAllowed = 'copy'
+                    e.dataTransfer.setData('application/x-ink-component', c.id)
+                    e.dataTransfer.setData('text/plain', c.name)
+                    try {
+                      const ghost = document.createElement('div')
+                      ghost.textContent = c.name
+                      ghost.style.cssText = 'position:fixed;top:-9999px;padding:4px 8px;background:#2C6BED;color:white;border-radius:6px;font-size:12px;'
+                      document.body.appendChild(ghost)
+                      e.dataTransfer.setDragImage(ghost, 8, 8)
+                      setTimeout(() => ghost.remove(), 0)
+                    } catch {}
+                  }}
+                  className="rounded-lg border border-ink-line p-2 text-left hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] transition-colors cursor-grab active:cursor-grabbing">
                   <div className="text-[12px] font-medium text-ink-text truncate mb-1.5">{c.name}</div>
                   <Thumb kind={c.thumb} tokens={tokens} />
                 </button>
@@ -228,9 +243,15 @@ function AssetsTab() {
             <input className="input mb-1.5" placeholder="搜索插画…" value={illKw} onChange={(e) => setIllKw(e.target.value)} />
             <div className="grid grid-cols-4 gap-1.5">
               {deduped.map((il) => (
-                <button key={`${il.id}:${illCat}`} title={`${il.name}${il.dynamic ? '（动效）' : ''} — 点击插入`}
+                <button key={`${il.id}:${illCat}`} title={`${il.name}${il.dynamic ? '（动效）' : ''} — 点击插入，可拖到画布`}
                   onClick={() => insertIllustration(tintIllustration(il.svg, tokens.colorPrimary))}
-                  className="group/il aspect-square rounded-lg border border-ink-line flex flex-col items-center justify-center p-1 hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] relative">
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'copy'
+                    e.dataTransfer.setData('application/x-ink-illustration', JSON.stringify({ svg: tintIllustration(il.svg, tokens.colorPrimary) }))
+                    e.dataTransfer.setData('text/plain', il.name)
+                  }}
+                  className="group/il aspect-square rounded-lg border border-ink-line flex flex-col items-center justify-center p-1 hover:border-[#2C6BED] hover:bg-[#2C6BED]/[0.04] relative cursor-grab active:cursor-grabbing">
                   <div className="flex-1 w-full flex items-center justify-center text-ink-text" dangerouslySetInnerHTML={{ __html: tintIllustration(il.svg, tokens.colorPrimary) }} />
                   <div className="text-[9.5px] text-ink-text-3 truncate w-full text-center">{il.name}</div>
                   {il.dynamic && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#2C6BED]" title="带 SMIL 动效" />}
@@ -261,18 +282,31 @@ function AssetsTab() {
             {!loading && !assets.length && <Empty text="还没有素材，点击上方上传" icon={<ImageIcon size={20} />} />}
             <div className="grid grid-cols-3 gap-1.5">
               {assets.map((a) => (
-                <div key={a.id} className="group relative aspect-square rounded-lg border border-ink-line overflow-hidden bg-black/[0.02]">
+                <div key={a.id} className="group relative aspect-square rounded-lg border border-ink-line overflow-hidden bg-black/[0.02] cursor-grab active:cursor-grabbing"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'copy'
+                    e.dataTransfer.setData('application/x-ink-asset', JSON.stringify({ url: a.url, name: a.name, width: a.width, height: a.height }))
+                    try {
+                      const ghost = document.createElement('img')
+                      ghost.src = a.url
+                      ghost.style.cssText = 'position:fixed;top:-9999px;width:48px;height:48px;object-fit:cover;border-radius:6px;'
+                      document.body.appendChild(ghost)
+                      e.dataTransfer.setDragImage(ghost, 24, 24)
+                      setTimeout(() => ghost.remove(), 0)
+                    } catch {}
+                  }}>
                   {a.kind === 'image' || a.kind === 'gif'
-                    ? <img src={a.url} alt={a.name} className="w-full h-full object-cover cursor-pointer" onClick={() => insertImage(a)} />
+                    ? <img src={a.url} alt={a.name} className="w-full h-full object-cover" draggable={false} onClick={() => insertImage(a)} />
                     : <button className="w-full h-full flex flex-col items-center justify-center gap-1 text-ink-text-3"
                       onClick={() => insertImage(a)}>
                       <FileText size={16} /><span className="text-[10px]">{a.kind.toUpperCase()}</span>
                       </button>}
                   <button className="absolute top-1 right-1 w-5 h-5 rounded bg-black/55 text-white items-center justify-center hidden group-hover:flex"
-                    onClick={async () => { await assetsApi.remove(a.id); void load(); toast('已删除') }}>
+                    onClick={async (e) => { e.stopPropagation(); await assetsApi.remove(a.id); void load(); toast('已删除') }}>
                     <Trash2 size={11} />
                   </button>
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-[9.5px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100">
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-[9.5px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 pointer-events-none">
                     {formatBytes(a.bytes)}
                   </div>
                 </div>

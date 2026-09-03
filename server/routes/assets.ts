@@ -35,7 +35,7 @@ async function saveBuffer(buf: Buffer, ext: string): Promise<string> {
   return name
 }
 
-assetsRouter.post('/upload', upload.single('file'), asyncHandler(async (req, res) => {
+assetsRouter.post('/assets/upload', upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) badRequest('没有收到文件')
   const file = req.file!
   const ext = extOf(file.mimetype, file.originalname)

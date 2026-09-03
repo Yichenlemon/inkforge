@@ -2,7 +2,7 @@ import type {
   Block, BlockStyle, ThemeTokens, Diagnostic, TableData, TimelineData, StepsData,
   AccordionData, InteractiveData, GalleryData, ColumnsData, CardData, CalloutData,
   DividerData, ButtonData, QrcodeData, VideoData, AudioData, CodeData, ImageData,
-  RichTextData, SvgData, LottieData, HtmlData, ShadowLevel, WechatEcoData,
+  RichTextData, SvgData, LottieData, HtmlData, ShadowLevel, WechatEcoData, FrameData,
 } from '../../shared/types.js'
 import { highlightToWechat } from './shiki.js'
 import { compileAnimation, stripAnimation, wrapSvgForWechat, ingestSvg } from './svg.js'
@@ -19,6 +19,8 @@ export interface RenderCtx {
   stripAnimation: boolean
   diagnostics: Diagnostic[]
   headingNumber: Map<number, number>
+  /** 渲染嵌套层级（frame children 用），避免奇数递归对象 cross-ctx */
+  depth?: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -1405,6 +1407,86 @@ function renderHtml(d: HtmlData, b: Block): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Frame（元素框）：导出到微信用 section + 内联块，嵌套 children 递归   */
+/* ------------------------------------------------------------------ */
+
+async function renderFrame(d: FrameData, b: Block, ctx: RenderCtx): Promise<string> {
+  const layout = d.layout ?? 'vertical'
+  const gap = d.gap ?? 12
+  const align = d.align ?? 'center'
+  const radius = d.borderRadius ?? 8
+  const bw = d.borderWidth ?? 0
+  const pad = d.padding ?? 8
+  const bg = d.background ?? 'transparent'
+  const border = d.borderColor ?? 'transparent'
+  const borderStyle = (d as any).borderStyle ?? (bw ? 'solid' : 'none')
+  const widthVal = d.width === 'auto' || d.width == null ? '100%' : `${Math.max(40, d.width)}px`
+  const heightVal = d.height === 'auto' || d.height == null ? 'auto' : `${Math.max(40, d.height)}px`
+  const blockId = b.id
+
+  // 容器样式：horizontal → flex row，vertical → 块级堆叠，absolute → 保持 relative + 子项 absolute
+  const containerStyle: Record<string, string> = {
+    width: widthVal,
+    height: heightVal,
+    'box-sizing': 'border-box',
+    padding: `${pad}px`,
+    'background-color': bg,
+    'border-radius': `${radius}px`,
+    'border-width': `${bw}px`,
+    'border-style': bw ? borderStyle : 'none',
+    'border-color': border,
+    margin: '0 auto', // 居中
+    position: 'relative',
+    overflow: 'hidden',
+  }
+  if (layout === 'horizontal') {
+    containerStyle.display = 'flex'
+    containerStyle['flex-wrap'] = 'wrap'
+    containerStyle['justify-content'] = align === 'between' ? 'space-between' : align
+    containerStyle['align-items'] = 'center'
+    containerStyle.gap = `${gap}px`
+  } else if (layout === 'vertical') {
+    containerStyle.display = 'block'
+    containerStyle['text-align'] = align === 'between' ? 'justify' : align
+  } else {
+    // absolute: 容器相对定位，子项 absolute
+    containerStyle.display = 'block'
+  }
+
+  const inner: string[] = []
+
+  // 1) inline 子元素（图片/SVG/文本）
+  if (Array.isArray(d.inline)) {
+    for (const it of d.inline) {
+      if (it.kind === 'image') {
+        const w = it.width ? `${it.width}px` : 'auto'
+        inner.push(`<img src="${esc(it.src || '')}" alt="${esc(it.alt || '')}" style="display:inline-block;width:${w};max-width:100%;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">`)
+      } else if (it.kind === 'svg') {
+        const svgInline = (it.svg || '').replace(/<\?xml[^>]*\?>/g, '').replace(/<!DOCTYPE[^>]*>/g, '')
+        inner.push(`<span style="display:inline-block;line-height:0;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">${svgInline}</span>`)
+      } else if (it.kind === 'text') {
+        inner.push(`<span style="display:inline-block;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">${esc(it.text || '')}</span>`)
+      }
+    }
+  }
+
+  // 2) 子区块（递归 render）
+  if (Array.isArray(d.children)) {
+    for (const ch of d.children) {
+      const segCtx = { ...ctx, depth: (ctx.depth ?? 0) + 1 }
+      inner.push(await renderBlock(ch, segCtx))
+    }
+  }
+
+  // absolute 模式下整体旋转/缩放
+  const outerTransform = layout === 'absolute'
+    ? `transform:rotate(${d.rotate ?? 0}deg) scale(${d.scale ?? 1});transform-origin:center;`
+    : ''
+
+  return `<section data-block-id="${blockId}" style="${styleOf(b.style, containerStyle)}${outerTransform}">${inner.join('')}</section>`
+}
+
+/* ------------------------------------------------------------------ */
 /* 入口                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -1436,6 +1518,7 @@ export async function renderBlock(b: Block, ctx: RenderCtx): Promise<string> {
     case 'columns': return renderColumns(d, b, ctx)
     case 'html': return renderHtml(d, b)
     case 'wechat-eco': return renderWechatEco(d as WechatEcoData, b, ctx)
+    case 'frame': return await renderFrame(d as FrameData, b, ctx)
     default: return ''
   }
 }

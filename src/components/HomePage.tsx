@@ -4,10 +4,11 @@ import {
   LayoutTemplate, Sparkles, Search, ArrowRight, Filter,
   Newspaper, Feather, GraduationCap, Gift, Users, Star, ListChecks, BookOpen,
   Wand2, Hash, Link2, Settings2, ChevronRight, Zap, TrendingUp, Calendar,
-  FileCode2, Eye, Edit3,
+  FileCode2, Eye, Edit3, ChevronDown,
 } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
+import { BrandLogo } from './BrandLogo.jsx'
 import { docsApi } from '../lib/api.js'
 import { DOC_TEMPLATES, type DocTemplate } from '../lib/docTemplates.js'
 import { toast } from '../lib/ui.js'
@@ -22,6 +23,7 @@ interface DocCard {
   meta: any
   createdAt: number
   updatedAt: number
+  lastOpenedAt?: number
   blockCount: number
   wordCount: number
 }
@@ -88,6 +90,8 @@ export function HomePage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [tplCat, setTplCat] = useState<DocTemplate['category'] | '全部'>('全部')
+  // 最近文档分页状态：每页 12 个，Load More 加载下一页
+  const [visibleCount, setVisibleCount] = useState(12)
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -104,6 +108,8 @@ export function HomePage() {
   }, [])
 
   useEffect(() => { void loadList() }, [loadList])
+  // 列表重新加载 / 搜索时把分页重置回第一页
+  useEffect(() => { setVisibleCount(12) }, [docs, query])
 
   const newFromTemplate = async (tpl: DocTemplate) => {
     setBusyId('__new')
@@ -173,11 +179,19 @@ export function HomePage() {
     () => docs.filter((d) => d.title.toLowerCase().includes(query.toLowerCase())),
     [docs, query],
   )
+  // 搜索时重置可见数；搜索框为空时，按 visibleCount 截断渲染
+  const visibleDocs = useMemo(
+    () => (query.trim() ? filtered : filtered.slice(0, visibleCount)),
+    [filtered, visibleCount, query],
+  )
 
   const stats = useMemo(() => {
     const totalWords = docs.reduce((s, d) => s + (d.wordCount || 0), 0)
     const totalBlocks = docs.reduce((s, d) => s + (d.blockCount || 0), 0)
-    const last = docs[0]?.updatedAt ?? null
+    // 「最近活动」= 最近编辑 + 最近打开中的最大值
+    const last = docs[0]?.lastOpenedAt
+      ?? docs[0]?.updatedAt
+      ?? null
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null
     const themes = new Set(docs.map((d) => d.themeId)).size
     return { totalWords, totalBlocks, last, days, themes }
@@ -197,16 +211,7 @@ export function HomePage() {
       {/* ============ Header ============ */}
       <header className="h-14 shrink-0 bg-white/90 backdrop-blur border-b border-ink-line flex items-center gap-3 px-6 sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#2C6BED] via-[#6E8EFB] to-[#A777E3] shadow-md flex items-center justify-center text-white text-[15px] font-bold">
-              墨
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#1D9E75] border-2 border-white" />
-          </div>
-          <div className="leading-tight">
-            <div className="text-[15px] font-semibold tracking-tight">InkForge</div>
-            <div className="text-[10.5px] text-ink-text-3 -mt-0.5">微信超级可视化编辑器</div>
-          </div>
+          <BrandLogo size={32} />
         </div>
 
         <div className="flex-1" />
@@ -297,9 +302,12 @@ export function HomePage() {
               <div>
                 <h2 className="text-[17px] font-bold flex items-center gap-2">
                   <FileText size={17} className="text-[#2C6BED]" /> 最近文档
+                  {/* badge 显示实际查到的总数（与渲染数对应） */}
                   <span className="chip bg-black/[0.05] text-ink-text-3">{filtered.length}</span>
                 </h2>
-                <p className="text-[12px] text-ink-text-3 mt-1">所有文档都自动保存到本地数据库,可随时回来继续。</p>
+                <p className="text-[12px] text-ink-text-3 mt-1">
+                  按「最近活动」倒序：最后打开 / 最后编辑，越靠上越新。每 12 篇一页，可展开全部。
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button className="btn btn-soft btn-sm" onClick={() => useUI.getState().openModal('command')}>
@@ -319,14 +327,42 @@ export function HomePage() {
                 onClear={() => setQuery('')}
               />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {filtered.slice(0, 10).map((d) => (
-                  <DocCardEl key={d.id} doc={d} onOpen={() => openDoc(d.id)}
-                    onDelete={() => removeDoc(d.id, d.title)}
-                    onDup={() => dupDoc(d.id)}
-                    onHistory={() => { useUI.getState().setCurrentDocId(d.id); useUI.getState().openModal('history') }} />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {visibleDocs.map((d) => (
+                    <DocCardEl key={d.id} doc={d} onOpen={() => openDoc(d.id)}
+                      onDelete={() => removeDoc(d.id, d.title)}
+                      onDup={() => dupDoc(d.id)}
+                      onHistory={() => { useUI.getState().setCurrentDocId(d.id); useUI.getState().openModal('history') }} />
+                  ))}
+                </div>
+                {/* 翻页器：每页 12，超过则展开下一组；总数显示当前位置 */}
+                {filtered.length > visibleCount && (
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <button className="btn btn-soft btn-sm"
+                      onClick={() => setVisibleCount((n) => n + 12)}
+                      aria-label="加载更多">
+                      <ChevronDown size={14} /> 加载更多
+                      <span className="chip bg-black/[0.05] text-ink-text-3 ml-1">
+                        还剩 {filtered.length - visibleCount} 篇
+                      </span>
+                    </button>
+                    <button className="btn btn-ghost btn-sm"
+                      onClick={() => setVisibleCount(filtered.length)}
+                      aria-label="展开全部">
+                      展开全部 ({filtered.length})
+                    </button>
+                    <button className="btn btn-ghost btn-sm"
+                      onClick={() => setVisibleCount(12)}
+                      aria-label="收起">
+                      收起
+                    </button>
+                  </div>
+                )}
+                <div className="mt-2 text-center text-[11.5px] text-ink-text-3">
+                  正在显示 {visibleDocs.length} / {filtered.length} 篇
+                </div>
+              </>
             )}
           </section>
 

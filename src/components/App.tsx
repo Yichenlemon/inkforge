@@ -19,6 +19,7 @@ import { ImageEditor } from './ImageEditor.jsx'
 import { CoverDialog } from './CoverDialog.jsx'
 import { CommandPalette } from './CommandPalette.jsx'
 import { HistoryPanel } from './HistoryPanel.jsx'
+import { BrandLogo } from './BrandLogo.jsx'
 import { MarkdownDialog } from './MarkdownDialog.jsx'
 import { FindReplaceDialog } from './FindReplaceDialog.jsx'
 import { SettingsDialog } from './SettingsDialog.jsx'
@@ -133,9 +134,8 @@ export default function App() {
           <PanelLeft size={15} />
         </button>
 
-        <div className="flex items-center gap-1.5 mr-1">
-          <span className="w-6 h-6 rounded-md bg-[#2C6BED] text-white flex items-center justify-center text-[12px] font-bold cursor-pointer"
-            onClick={() => useUI.getState().setPage('home')} title="返回首页">墨</span>
+        <div className="flex items-center gap-1.5 mr-1 cursor-pointer" onClick={() => useUI.getState().setPage('home')} title="返回首页">
+          <BrandLogo size={22} showText={false} />
           <span className="text-[14px] font-semibold hide-md">InkForge</span>
         </div>
 

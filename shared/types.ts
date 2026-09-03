@@ -438,11 +438,61 @@ export interface ColumnsData {
   gap?: number
 }
 
+/**
+ * 元素框（frame）：可嵌套子区块 / 子元素的容器，仿 PowerPoint 形状编辑。
+ * - 在编辑器内提供四向缩放手柄 / 拖动 / 嵌套
+ * - 导出时 children 顺序渲染并自带外框样式
+ */
+export interface FrameData {
+  /** 嵌套子区块（Block） */
+  children: Block[]
+  /** 内联子元素（图片/SVG）顺序排列 */
+  inline: FrameInlineItem[]
+  /** frame 自身宽度（px 或 'auto'） */
+  width?: number | 'auto'
+  height?: number | 'auto'
+  /** 排列方式：horizontal 横向 / vertical 纵向 / absolute 自由（后者支持 x,y,rotate,scale） */
+  layout: 'horizontal' | 'vertical' | 'absolute'
+  /** 主轴对齐 */
+  align?: 'start' | 'center' | 'end' | 'between'
+  /** 间距 */
+  gap?: number
+  /** 背景与边框 */
+  background?: string
+  borderColor?: string
+  borderRadius?: number
+  borderWidth?: number
+  padding?: number
+  /** 旋转/缩放（仅 absolute 模式下生效；非破坏性，导出 SVG 时整体 transform） */
+  rotate?: number
+  scale?: number
+}
+
+export interface FrameInlineItem {
+  id: string
+  /** 组合分组 id：相同 groupId 的内联元素作为一个整体一起拖动（PowerPoint 式组合） */
+  groupId?: string
+  /** 图片: {src,alt,width,height}; SVG: {svg,color}; 文本: {text} */
+  kind: 'image' | 'svg' | 'text'
+  src?: string
+  alt?: string
+  svg?: string
+  color?: string
+  text?: string
+  width?: number
+  height?: number
+  /** 仅 absolute 模式：相对 frame 的偏移 / 旋转 / 缩放 */
+  x?: number
+  y?: number
+  rotate?: number
+  scale?: number
+}
+
 export type BlockData =
   | RichTextData | ImageData | GalleryData | CodeData | TableData | DividerData
   | CardData | CalloutData | TimelineData | StepsData | AccordionData | ButtonData
   | SvgData | LottieData | VideoData | AudioData | QrcodeData | InteractiveData
-  | HtmlData | ColumnsData | WechatEcoData
+  | HtmlData | ColumnsData | WechatEcoData | FrameData
 
 export type BlockType =
   | 'paragraph' | 'heading' | 'quote' | 'list'
@@ -450,6 +500,7 @@ export type BlockType =
   | 'card' | 'callout' | 'timeline' | 'steps' | 'accordion' | 'button'
   | 'svg' | 'lottie' | 'video' | 'audio' | 'qrcode' | 'interactive'
   | 'html' | 'columns' | 'wechat-eco'
+  | 'frame'
 
 /* ------------------------------------------------------------------ */
 /* Block 与文档                                                         */

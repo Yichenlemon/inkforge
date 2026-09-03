@@ -6,9 +6,9 @@ import { html as cmHtml } from '@codemirror/lang-html'
 import { json as cmJson } from '@codemirror/lang-json'
 import {
   Plus, Trash2, ArrowUp, ArrowDown, GripVertical, Copy, Eye, EyeOff, AlertTriangle,
-  Wand2, Loader2, Table2, Settings2, Play, Pause, RefreshCw, Move, Download,
+  Wand2, Loader2, Table2, Settings2, Play, Pause, RefreshCw, Move, Download, Maximize2,
 } from 'lucide-react'
-import type { Block, ThemeTokens, RichTextData, TableData, TimelineData, StepsData, AccordionData, InteractiveData, CodeData, CardData, CalloutData, GalleryData, ColumnsData, QrcodeData, SvgData, LottieData, ButtonData, DividerData, VideoData, AudioData, HtmlData, ImageData, WechatEcoData } from '../../shared/types.js'
+import type { Block, ThemeTokens, RichTextData, TableData, TimelineData, StepsData, AccordionData, InteractiveData, CodeData, CardData, CalloutData, GalleryData, ColumnsData, QrcodeData, SvgData, LottieData, ButtonData, DividerData, VideoData, AudioData, HtmlData, ImageData, WechatEcoData, FrameData, FrameInlineItem } from '../../shared/types.js'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
 import { RichEditor } from './RichEditor.jsx'
@@ -1006,6 +1006,333 @@ export function ColumnsView({ block, data, tokens }: BlockViewProps<ColumnsData>
 }
 
 /* ------------------------------------------------------------------ */
+/* Frame（元素框）：编辑态展示 + 嵌套 children 渲染                     */
+/* ------------------------------------------------------------------ */
+
+export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
+  const up = useUpdate(block)
+  const layout = data.layout ?? 'vertical'
+  const children = Array.isArray(data.children) ? data.children : []
+  const inline = Array.isArray(data.inline) ? data.inline : []
+  const setInline = (i: number, patch: Partial<FrameInlineItem>) =>
+    up({ inline: inline.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) })
+
+  const selected = useUI((s) => s.selectedId === block.id)
+  const begin = useDoc((s) => s.beginTransient)
+  const live = useDoc((s) => s.updateLive)
+  const end = useDoc((s) => s.endTransient)
+  const isAbs = layout === 'absolute'
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [snap, setSnap] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+
+  /** 元素框手柄拖拽：缩放/旋转（框级） + 内联元素拖动（带智能吸附） */
+  const beginHandle = (e: React.MouseEvent, mode: 'frame-resize:se' | 'frame-rotate' | 'inline-move', index: number) => {
+    if (!isAbs && mode !== 'frame-resize:se') return
+    e.preventDefault(); e.stopPropagation()
+    const body = bodyRef.current; if (!body) return
+    const startX = e.clientX, startY = e.clientY
+    const item = inline[index]
+    const startItemX = item?.x ?? 0, startItemY = item?.y ?? 0
+    const group = item?.groupId
+    const groupItems = group ? inline.filter((it) => it.groupId === group) : null
+    const startW = data.width && data.width !== 'auto' ? Number(data.width) : body.offsetWidth
+    const startH = data.height && data.height !== 'auto' ? Number(data.height) : body.offsetHeight
+    let started = false
+    const move = (ev: MouseEvent) => {
+      if (!started) { started = true; begin() }
+      if (mode === 'frame-resize:se') {
+        const w = Math.max(40, Math.round(startW + (ev.clientX - startX)))
+        const h = Math.max(20, Math.round(startH + (ev.clientY - startY)))
+        live(block.id, { width: w, height: h })
+      } else if (mode === 'frame-rotate') {
+        const r = body.getBoundingClientRect()
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+        let ang = Math.round(Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI) + 90
+        ang = ((ang % 360) + 360) % 360
+        live(block.id, { rotate: ang })
+      } else if (mode === 'inline-move') {
+        let dx = Math.round(ev.clientX - startX)
+        let dy = Math.round(ev.clientY - startY)
+        const SNAP = 6
+        const frameW = body.offsetWidth, frameH = body.offsetHeight
+        const targetsV = [0, frameW / 2, frameW]
+        const targetsH = [0, frameH / 2, frameH]
+        for (const it of inline) {
+          if (it === item) continue
+          const w = it.width ?? (it.kind === 'image' || it.kind === 'svg' ? 80 : 60)
+          const h = it.height ?? 24
+          const l = it.x ?? 0, t = it.y ?? 0
+          targetsV.push(l, l + w / 2, l + w)
+          targetsH.push(t, t + h / 2, t + h)
+        }
+        const iw = item?.width ?? 80, ih = item?.height ?? 24
+        const candV = [startItemX + dx, startItemX + dx + iw / 2, startItemX + dx + iw]
+        const candH = [startItemY + dy, startItemY + dy + ih / 2, startItemY + dy + ih]
+        let bestV: { d: number; delta: number; pos: number } | null = null
+        let bestH: { d: number; delta: number; pos: number } | null = null
+        for (const t of targetsV) for (const s of candV) { const d = Math.abs(s - t); if (d <= SNAP && (!bestV || d < bestV.d)) bestV = { d, delta: t - s, pos: t } }
+        for (const t of targetsH) for (const s of candH) { const d = Math.abs(s - t); if (d <= SNAP && (!bestH || d < bestH.d)) bestH = { d, delta: t - s, pos: t } }
+        const vLines: number[] = [], hLines: number[] = []
+        if (bestV) { dx += bestV.delta; vLines.push(bestV.pos) }
+        if (bestH) { dy += bestH.delta; hLines.push(bestH.pos) }
+        setSnap({ v: vLines, h: hLines })
+        const nx = startItemX + dx, ny = startItemY + dy
+        if (group && groupItems) {
+          const deltaX = nx - startItemX, deltaY = ny - startItemY
+          const ids = new Set(groupItems.map((g) => g.id))
+          live(block.id, { inline: inline.map((it) => ids.has(it.id) ? { ...it, x: (it.x ?? 0) + deltaX, y: (it.y ?? 0) + deltaY } : it) })
+        } else {
+          live(block.id, { inline: inline.map((it, idx) => idx === index ? { ...it, x: nx, y: ny } : it) })
+        }
+      }
+    }
+    const stop = () => {
+      setSnap({ v: [], h: [] })
+      if (started) end(mode === 'frame-rotate' ? '旋转元素框' : mode === 'frame-resize:se' ? '缩放元素框' : '移动元素')
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
+  }
+
+  return (
+    <div className="relative">
+      {/* frame 本体 */}
+      <div
+        ref={bodyRef}
+        className="relative"
+        style={{
+          display: layout === 'horizontal' ? 'flex' : 'block',
+          flexDirection: layout === 'horizontal' ? 'row' : undefined,
+          flexWrap: layout === 'horizontal' ? 'wrap' : undefined,
+          justifyContent: layout === 'horizontal'
+            ? (data.align === 'between' ? 'space-between' : data.align ?? 'flex-start')
+            : undefined,
+          alignItems: layout === 'horizontal' ? 'center' : undefined,
+          gap: layout === 'horizontal' ? `${data.gap ?? 12}px` : `${data.gap ?? 6}px`,
+          width: data.width === 'auto' || data.width == null ? '100%' : `${data.width}px`,
+          height: data.height === 'auto' || data.height == null ? 'auto' : `${data.height}px`,
+          minHeight: 56,
+          padding: `${data.padding ?? 8}px`,
+          background: data.background ?? 'transparent',
+          borderRadius: `${data.borderRadius ?? 8}px`,
+          border: data.borderWidth
+            ? `${data.borderWidth}px ${(data as any).borderStyle ?? 'solid'} ${data.borderColor ?? '#ddd'}`
+            : undefined,
+          position: 'relative',
+          boxSizing: 'border-box',
+          transform: layout === 'absolute' ? `rotate(${data.rotate ?? 0}deg) scale(${data.scale ?? 1})` : undefined,
+          transformOrigin: layout === 'absolute' ? 'center' : undefined,
+        }}
+      >
+        {/* 选中态：缩放/旋转手柄 + 智能吸附参考线 */}
+        {selected && (
+          <>
+            <span className="no-print" title="拖动缩放"
+              onMouseDown={(e) => beginHandle(e, 'frame-resize:se', -1)}
+              style={{ position: 'absolute', right: -7, bottom: -7, width: 14, height: 14, borderRadius: 3, background: '#2C6BED', cursor: 'nwse-resize', boxShadow: '0 0 0 2px #fff', zIndex: 5 }} />
+            {isAbs && (
+              <span className="no-print" title="拖动旋转"
+                onMouseDown={(e) => beginHandle(e, 'frame-rotate', -1)}
+                style={{ position: 'absolute', left: '50%', top: -30, transform: 'translateX(-50%)', width: 18, height: 18, borderRadius: '50%', background: '#fff', border: '2px solid #2C6BED', cursor: 'grab', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2C6BED', zIndex: 5 }}>
+                <Maximize2 size={11} />
+              </span>
+            )}
+          </>
+        )}
+        {snap.v.map((x, i) => (
+          <span key={'sv' + i} className="no-print" style={{ position: 'absolute', left: x, top: 0, bottom: 0, width: 1, background: '#F25FA8', pointerEvents: 'none', zIndex: 6 }} />
+        ))}
+        {snap.h.map((y, i) => (
+          <span key={'sh' + i} className="no-print" style={{ position: 'absolute', left: 0, right: 0, top: y, height: 1, background: '#F25FA8', pointerEvents: 'none', zIndex: 6 }} />
+        ))}
+        {/* children blocks（可嵌套任意 Block） */}
+        {children.length === 0 && inline.length === 0 && (
+          <div className="text-ink-text-3 text-[12px] italic w-full text-center py-3 select-none">
+            空元素框 · 在左侧组件库拖入 / 点击右侧插入新子区块
+          </div>
+        )}
+        {children.map((ch, i) => (
+          <div key={ch.id} className="flex-1 min-w-[80px] group/child" style={{ flexBasis: layout === 'horizontal' ? 'auto' : '100%' }}>
+            <div className="flex items-start gap-1">
+              <span className="cursor-grab text-ink-text-3 active:cursor-grabbing mt-1 no-print select-none" draggable
+                onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-ink-blockmove', JSON.stringify({ blockId: ch.id, source: 'frame', frameId: block.id })); e.dataTransfer.effectAllowed = 'move' }}
+                title="拖到其它元素框或画布">⠿</span>
+              <div className="flex-1 min-w-0">
+                <BlockView block={ch} tokens={tokens} />
+              </div>
+            </div>
+            <button className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-0.5"
+              onClick={() => up({ children: children.filter((_, idx) => idx !== i) })}>
+              <Trash2 size={10} /> 移除此子块
+            </button>
+          </div>
+        ))}
+        {/* inline 子元素（图片/SVG/文本，可拖动定位） */}
+        {inline.map((it, i) => (
+          <FrameInlineEl key={it.id} item={it} layout={layout}
+            onChange={(patch) => setInline(i, patch)}
+            onRemove={() => up({ inline: inline.filter((_, idx) => idx !== i) })}
+            onStartDrag={isAbs ? (e) => beginHandle(e, 'inline-move', i) : undefined}
+          />
+        ))}
+      </div>
+
+      {/* 选中态：元素框工具条（PowerPoint 风格：组合/拆分/变形/缩放） */}
+      {selected && (
+        <div className="mt-2 rounded-lg border border-ink-line bg-white/90 p-2 space-y-1.5 no-print">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Segmented value={layout} onChange={(v) => up({ layout: v as any })}
+              options={[{ value: 'horizontal', label: '横排' }, { value: 'vertical', label: '纵排' }, { value: 'absolute', label: '自由' }]} />
+            <label className="text-ink-text-3 text-[10.5px]">宽</label>
+            <input className="input input-xs w-14" type="number" value={data.width === 'auto' || data.width == null ? '' : data.width}
+              onChange={(e) => up({ width: e.target.value === '' ? 'auto' : Number(e.target.value) })} />
+            <label className="text-ink-text-3 text-[10.5px]">高</label>
+            <input className="input input-xs w-14" type="number" value={data.height === 'auto' || data.height == null ? '' : data.height}
+              onChange={(e) => up({ height: e.target.value === '' ? 'auto' : Number(e.target.value) })} />
+            {isAbs && (<>
+              <label className="text-ink-text-3 text-[10.5px]">角</label>
+              <input className="input input-xs w-12" type="number" value={data.rotate ?? 0}
+                onChange={(e) => up({ rotate: Number(e.target.value) })} />
+              <label className="text-ink-text-3 text-[10.5px]">比</label>
+              <input className="input input-xs w-12" type="number" step="0.1" value={data.scale ?? 1}
+                onChange={(e) => up({ scale: Number(e.target.value) })} />
+            </>)}
+            <button className="btn btn-ghost btn-xs" onClick={() => up({ width: 'auto', height: 'auto', rotate: 0, scale: 1 })} title="重置尺寸/角度/比例">归位</button>
+          </div>
+          {inline.length > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button className="btn btn-soft btn-xs" onClick={() => { const g = 'g_' + Date.now().toString(36); up({ inline: inline.map((it) => ({ ...it, groupId: g })) }) }}>组合全部</button>
+              <button className="btn btn-soft btn-xs" onClick={() => up({ inline: inline.map((it) => ({ ...it, groupId: undefined })) })}>拆分</button>
+              <span className="text-ink-text-3 text-[10.5px]">{inline.filter((it) => it.groupId).length} 个已组合</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 右下角快速添加子块 + inline */}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ children: [...children, {
+            id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4),
+            type: 'paragraph', data: { html: '新段落' }, style: { marginTop: 0, marginBottom: 8 },
+          } as Block] })}>
+          <Plus size={11} /> 加段落
+        </button>
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ children: [...children, {
+            id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4),
+            type: 'image', data: { src: '', alt: '', display: 'block' }, style: { marginBottom: 8 },
+          } as Block] })}>
+          <Plus size={11} /> 加图片
+        </button>
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ children: [...children, {
+            id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4),
+            type: 'button', data: { text: '按钮', href: '#' }, style: { marginBottom: 0 },
+          } as Block] })}>
+          <Plus size={11} /> 加按钮
+        </button>
+        <span className="text-ink-text-3 text-[10.5px] self-center mx-1">|</span>
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ inline: [...inline, {
+            id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            kind: 'image', src: '', alt: '', width: 120, x: 12, y: 12,
+          } as FrameInlineItem] })}>
+          <Plus size={11} /> 加图片(可拖位)
+        </button>
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ inline: [...inline, {
+            id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            kind: 'svg', svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><circle cx="12" cy="12" r="10" fill="#2C6BED"/></svg>', width: 32, x: 12, y: 12,
+          } as FrameInlineItem] })}>
+          <Plus size={11} /> 加 SVG(可拖位)
+        </button>
+        <button className="btn btn-soft btn-xs"
+          onClick={() => up({ inline: [...inline, {
+            id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            kind: 'text', text: '文本元素', x: 12, y: 12, color: '#222',
+          } as FrameInlineItem] })}>
+          <Plus size={11} /> 加文本(可拖位)
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** inline 子元素控件：可输入 src/文字，并在 layout=absolute 时显示坐标输入 */
+function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag }: {
+  item: FrameInlineItem
+  layout: 'horizontal' | 'vertical' | 'absolute'
+  onChange: (patch: Partial<FrameInlineItem>) => void
+  onRemove: () => void
+  onStartDrag?: (e: React.MouseEvent) => void
+}) {
+  const abs = layout === 'absolute'
+  return (
+    <div
+      className="bg-white/70 border border-ink-line rounded p-1.5 text-[11px] flex flex-col gap-1 relative"
+      style={{
+        position: abs ? 'absolute' : 'relative',
+        left: abs ? `${item.x ?? 0}px` : undefined,
+        top: abs ? `${item.y ?? 0}px` : undefined,
+        transform: abs ? `rotate(${item.rotate ?? 0}deg) scale(${item.scale ?? 1})` : undefined,
+        transformOrigin: abs ? 'center' : undefined,
+        width: item.width ? `${item.width}px` : undefined,
+        maxWidth: '100%',
+      }}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span className="flex items-center gap-1">
+          {onStartDrag && (
+            <span className="cursor-grab text-ink-text-3 active:cursor-grabbing" onMouseDown={(e) => { e.stopPropagation(); onStartDrag(e) }} title="拖动定位">⠿</span>
+          )}
+          <span className="chip bg-black/[0.05]">{item.kind.toUpperCase()}</span>
+          {item.groupId && <span className="chip bg-[#2C6BED]/10 text-[#2C6BED]" title="已组合">组</span>}
+        </span>
+        <button className="btn btn-ghost btn-xs px-1" onClick={onRemove} title="移除">
+          <Trash2 size={10} />
+        </button>
+      </div>
+      {item.kind === 'image' && (
+        <input className="input input-xs" placeholder="图片 URL / 上传"
+          value={item.src || ''} onChange={(e) => onChange({ src: e.target.value })} />
+      )}
+      {item.kind === 'svg' && (
+        <textarea className="input input-xs font-mono" rows={2} placeholder="<svg …>"
+          value={item.svg || ''} onChange={(e) => onChange({ svg: e.target.value })} />
+      )}
+      {item.kind === 'text' && (
+        <input className="input input-xs" placeholder="文本"
+          value={item.text || ''} onChange={(e) => onChange({ text: e.target.value })} />
+      )}
+      <div className="flex items-center gap-1">
+        <label className="text-ink-text-3">宽</label>
+        <input type="number" className="input input-xs w-12" value={item.width ?? ''}
+          onChange={(e) => onChange({ width: e.target.value ? Number(e.target.value) : undefined })} />
+        {abs && (
+          <>
+            <label className="text-ink-text-3">X</label>
+            <input type="number" className="input input-xs w-10" value={item.x ?? 0}
+              onChange={(e) => onChange({ x: Number(e.target.value) })} />
+            <label className="text-ink-text-3">Y</label>
+            <input type="number" className="input input-xs w-10" value={item.y ?? 0}
+              onChange={(e) => onChange({ y: Number(e.target.value) })} />
+            <label className="text-ink-text-3">角度</label>
+            <input type="number" className="input input-xs w-12" value={item.rotate ?? 0}
+              onChange={(e) => onChange({ rotate: Number(e.target.value) })} />
+            <label className="text-ink-text-3">缩放</label>
+            <input type="number" step="0.1" className="input input-xs w-12" value={item.scale ?? 1}
+              onChange={(e) => onChange({ scale: Number(e.target.value) })} />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* 分发                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -1037,6 +1364,7 @@ export function BlockView(props: { block: Block; tokens: ThemeTokens }) {
     case 'interactive': return <InteractiveView block={block} data={data} tokens={tokens} />
     case 'html': return <HtmlView block={block} data={data} tokens={tokens} />
     case 'columns': return <ColumnsView block={block} data={data} tokens={tokens} />
+    case 'frame': return <FrameView block={block} data={data} tokens={tokens} />
     default: return <div className="text-ink-text-3 text-[12px]">未知区块类型：{block.type}</div>
   }
 }

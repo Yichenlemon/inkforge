@@ -21,8 +21,12 @@ export const api = {
     const fd = new FormData()
     fd.append('file', file, filename)
     const res = await fetch(API + p, { method: 'POST', body: fd })
-    const json = await res.json()
-    if (!res.ok || json.ok === false) throw new Error(json.message ?? '上传失败')
+    // 后端在 multer 等错误时可能吐 HTML / 空响应，先按 text 读再安全 parse，避免上游 SyntaxError
+    const text = await res.text()
+    let json: any
+    try { json = text ? JSON.parse(text) : { ok: false, message: '空响应' } }
+    catch { json = { ok: false, message: text.slice(0, 200) || `HTTP ${res.status}` } }
+    if (!res.ok || json.ok === false) throw new Error(json.message ?? `上传失败 (HTTP ${res.status})`)
     return json as T
   },
 }

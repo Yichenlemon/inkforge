@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory } from '../db.js'
+import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory, touchDocOpen } from '../db.js'
 import { migrateDoc } from '../../shared/types.js'
 import { asyncHandler, ok, badRequest, notFound, str } from '../lib/http.js'
 
@@ -12,6 +12,8 @@ docsRouter.get('/docs', asyncHandler(async (_req, res) => {
 docsRouter.get('/docs/:id', asyncHandler(async (req, res) => {
   const row = getDocRow(req.params.id)
   if (!row) notFound('文档不存在')
+  // 「最近」语义：用户打开文档也算一次活动，更新 lastOpenedAt
+  touchDocOpen(req.params.id)
   return ok(res, {
     doc: {
       ...migrateDoc(JSON.parse(row.data)),

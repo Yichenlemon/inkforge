@@ -19,7 +19,7 @@ const heading = (html: string, level: 1 | 2 | 3 | 4, style = 'plain') =>
   B('heading', { html, level, headingStyle: style })
 
 export const COMPONENT_CATEGORIES = [
-  '标题', '正文', '卡片', '列表', '表格', '引用', '分割线', '引导', '交互', '微信生态', '组合',
+  '标题', '正文', '卡片', '列表', '表格', '引用', '分割线', '引导', '交互', '元素框', '微信生态', '组合',
 ] as const
 
 export const COMPONENTS: ComponentDef[] = [
@@ -144,6 +144,32 @@ export const COMPONENTS: ComponentDef[] = [
     create: () => [B('video', { url: '', title: '视频标题', mode: 'poster' })] },
   { id: 'columns-2', name: '双栏排版', category: '引导', tags: ['columns'], thumb: 'grid',
     create: () => [B('columns', { columns: [{ html: '左栏内容' }, { html: '右栏内容' }], gap: 12 })] },
+
+  /* ---------------- 元素框（可嵌套 / 拖拽 / 变形） ---------------- */
+  { id: 'frame-horizontal', name: '横向元素框', category: '元素框', tags: ['frame', '组合', '排列'], thumb: 'grid',
+    create: () => [B('frame', {
+      children: [], inline: [],
+      layout: 'horizontal', align: 'center', gap: 12,
+      padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#2C6BED',
+      background: '#F0F4FF',
+      width: 'auto', height: 'auto',
+    } satisfies any)] },
+  { id: 'frame-vertical', name: '纵向元素框', category: '元素框', tags: ['frame', '垂直', '排列'], thumb: 'list',
+    create: () => [B('frame', {
+      children: [], inline: [],
+      layout: 'vertical', align: 'center', gap: 12,
+      padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1D9E75',
+      background: '#E8F8F1',
+      width: 'auto', height: 'auto',
+    } satisfies any)] },
+  { id: 'frame-canvas', name: '自由画板（拖拽+缩放+旋转）', category: '元素框', tags: ['frame', '画板', 'powerpoint'], thumb: 'grid',
+    create: () => [B('frame', {
+      children: [], inline: [],
+      layout: 'absolute', gap: 0,
+      padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#A777E3',
+      borderStyle: 'dashed', background: '#FAF5FF',
+      width: 600, height: 360, rotate: 0, scale: 1,
+    } satisfies any)] },
 
   /* ---------------- 交互 ---------------- */
   { id: 'ix-slider', name: '横向滑动', category: '交互', tags: ['slider', '滑动'], thumb: 'image',
@@ -337,4 +363,5 @@ export const BLOCK_TYPE_LABEL: Record<BlockType, string> = {
   card: '卡片', callout: '提示', timeline: '时间轴', steps: '步骤', accordion: '折叠', button: '按钮',
   svg: 'SVG', lottie: 'Lottie', video: '视频', audio: '音频', qrcode: '二维码',
   interactive: '交互', html: '自定义 HTML', columns: '分栏', 'wechat-eco': '微信生态',
+  frame: '元素框',
 }

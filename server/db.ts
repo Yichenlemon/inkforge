@@ -20,6 +20,9 @@ export const db = new Database(DB_PATH)
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
+// 旧库兼容：缺列则补列（SQLite 不支持 IF NOT EXISTS for ADD COLUMN）
+try { db.exec('ALTER TABLE docs ADD COLUMN lastOpenedAt INTEGER') } catch { /* column exists */ }
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS docs (
   id          TEXT PRIMARY KEY,
@@ -28,9 +31,11 @@ CREATE TABLE IF NOT EXISTS docs (
   data        TEXT NOT NULL,
   meta        TEXT NOT NULL DEFAULT '{}',
   createdAt   INTEGER NOT NULL,
-  updatedAt   INTEGER NOT NULL
+  updatedAt   INTEGER NOT NULL,
+  lastOpenedAt INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_docs_updated ON docs(updatedAt DESC);
+CREATE INDEX IF NOT EXISTS idx_docs_opened ON docs(lastOpenedAt DESC);
 
 CREATE TABLE IF NOT EXISTS history (
   id        TEXT PRIMARY KEY,
@@ -118,7 +123,12 @@ export interface DocRow {
 }
 
 export function listDocs(): Omit<DocRow, 'data'>[] {
-  const rows = db.prepare('SELECT id, title, themeId, meta, data, createdAt, updatedAt FROM docs ORDER BY updatedAt DESC').all() as (Omit<DocRow, 'data'> & { data: string })[]
+  // 「最近 = 最后活动」：同时按 updatedAt 和 lastOpenedAt 取最大值倒序
+  const rows = db.prepare(
+    `SELECT id, title, themeId, meta, data, createdAt, updatedAt, lastOpenedAt
+     FROM docs
+     ORDER BY MAX(COALESCE(lastOpenedAt, 0), updatedAt) DESC`,
+  ).all() as (Omit<DocRow, 'data'> & { data: string })[]
   return rows.map((r) => {
     let blockCount = 0
     let wordCount = 0
@@ -134,6 +144,11 @@ export function listDocs(): Omit<DocRow, 'data'>[] {
     const { data: _d, ...rest } = r
     return { ...rest, blockCount, wordCount }
   })
+}
+
+/** 轻量更新 lastOpenedAt（防抖到 setImmediate 即可） */
+export function touchDocOpen(id: string): void {
+  db.prepare('UPDATE docs SET lastOpenedAt = ? WHERE id = ?').run(Date.now(), id)
 }
 
 export function getDocRow(id: string): DocRow | undefined {
