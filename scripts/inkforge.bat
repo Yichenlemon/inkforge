@@ -12,7 +12,7 @@ REM ============================================================================
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 
-set "VERSION=1.0.0"
+set "VERSION=1.4.0"
 set "API_PORT=5177"
 set "WEB_PORT=5173"
 set "DATA_DIR=%ROOT%\data"

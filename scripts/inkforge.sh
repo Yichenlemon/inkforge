@@ -34,7 +34,7 @@ ROOT="$(cd -P "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 cd "$ROOT"
 
 # ---- 版本 / 路径 ------------------------------------------------------------
-VERSION="1.0.0"
+VERSION="1.4.0"
 API_PORT="${PORT:-5177}"
 WEB_PORT="5173"
 DATA_DIR="$ROOT/data"
