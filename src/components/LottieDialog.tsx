@@ -47,8 +47,10 @@ export function LottieDialog() {
         const fd = new FormData()
         fd.append('file', file)
         const res = await fetch('/api/convert/dotlottie', { method: 'POST', body: fd })
-        const j = await res.json()
-        if (!j.ok) throw new Error(j.message)
+        const text = await res.text()
+        let j: any
+        try { j = JSON.parse(text) } catch { throw new Error(`转换服务返回异常 (HTTP ${res.status})：${text.slice(0, 120)}`) }
+        if (!res.ok || j.ok === false) throw new Error(j?.message ?? `转换失败 (HTTP ${res.status})`)
         setJson(j.json); setName(file.name); await probe(j.json)
       } else {
         const text = await file.text()
@@ -128,7 +130,9 @@ export function LottieDialog() {
                 try {
                   const res = await fetch(urlInput)
                   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                  const data = await res.json()
+                  const text = await res.text()
+                  let data: any
+                  try { data = JSON.parse(text) } catch { throw new Error('该链接返回的不是合法 JSON（可能是网页或错误页），请确认是 Lottie JSON 直链') }
                   setJson(data); setName(urlInput.split('/').pop() ?? 'remote.json')
                   await probe(data)
                 } catch (e: any) { toast(e?.message ?? '加载失败（注意跨域限制）', 'error') }

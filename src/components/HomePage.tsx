@@ -98,7 +98,7 @@ export function HomePage() {
     try {
       const res = await docsApi.list()
       setDocs((res.docs ?? []).map((d: any) => ({
-        ...d, meta: d.meta ? JSON.parse(d.meta) : {},
+        ...d, meta: (() => { try { return d.meta ? JSON.parse(d.meta) : {} } catch { return {} } })(),
       })))
     } catch (e: any) {
       toast(e?.message ?? '加载失败', 'error')
