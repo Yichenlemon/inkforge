@@ -448,6 +448,16 @@ function SortableBlock({ block, index, tokens, selected, onSelect }: {
         <button className="btn btn-ghost btn-xs px-0.5 cursor-grab" {...attributes} {...listeners} title="拖动排序">
           <GripVertical size={13} />
         </button>
+        <button
+          className="btn btn-ghost btn-xs px-0.5 cursor-grab"
+          draggable
+          title="拖入元素框"
+          onDragStart={(e) => {
+            e.stopPropagation()
+            e.dataTransfer.setData('application/x-ink-blockmove', JSON.stringify({ blockId: block.id, source: 'top' }))
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+        >⠿</button>
         <button className="btn btn-ghost btn-xs px-0.5" title="上移" onClick={() => moveBlockBy(block.id, -1)}>
           <ArrowUp size={11} />
         </button>
