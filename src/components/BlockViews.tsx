@@ -771,7 +771,8 @@ export function VideoView({ block, data, tokens }: BlockViewProps<VideoData>) {
     <div className="space-y-2">
       <ImagePicker value={data.poster} onChange={(u) => up({ poster: u })} hint="封面图" />
       <input className="input" placeholder="视频标题" value={data.title ?? ''} onChange={(e) => up({ title: e.target.value })} />
-      <input className="input" placeholder="视频号 vid（官方组件）" value={data.vid ?? ''} onChange={(e) => up({ vid: e.target.value })} />
+      <input className="input" placeholder="腾讯视频 vid（官方组件）" value={data.tencentVid ?? ''} onChange={(e) => up({ tencentVid: e.target.value })} />
+      <input className="input" placeholder="视频地址（本地预览）" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
     </div>
   )
 }
@@ -783,8 +784,8 @@ export function AudioView({ block, data, tokens }: BlockViewProps<AudioData>) {
       <div className="w-16 shrink-0"><ImagePicker value={data.cover} onChange={(u) => up({ cover: u })} square /></div>
       <div className="flex-1 space-y-1.5">
         <input className="input" placeholder="音频标题" value={data.title ?? ''} onChange={(e) => up({ title: e.target.value })} />
-        <input className="input" placeholder="主播 / 作者" value={data.artist ?? ''} onChange={(e) => up({ artist: e.target.value })} />
-        <input className="input" placeholder="音频地址" value={data.url ?? ''} onChange={(e) => up({ url: e.target.value })} />
+        <input className="input" placeholder="主播 / 歌手" value={data.singer ?? ''} onChange={(e) => up({ singer: e.target.value })} />
+        <input className="input" placeholder="音频地址" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
       </div>
     </div>
   )

@@ -41,6 +41,7 @@ export const docsApi = {
   save: (doc: any) => api.post('/docs', { doc }),
   snapshot: (doc: any, label?: string) => api.post(`/docs/${doc.id}/snapshot`, { doc, label }),
   remove: (id: string) => api.del(`/docs/${id}`),
+  patch: (id: string, body: any) => api.patch(`/docs/${id}`, body),
   history: (id: string) => api.get(`/docs/${id}/history`),
   historyGet: (hid: string) => api.get(`/history/${hid}`),
 }
@@ -145,6 +146,15 @@ export const wechatApi = {
 
 export const metaApi = {
   get: () => api.get('/meta'),
+}
+
+/** 统一文件查询 / 管理（文件管理模块 Stage A 后端提供，前端做容错） */
+export const filesApi = {
+  list: (facet = 'all', q = '') => api.get(`/files?facet=${encodeURIComponent(facet)}&q=${encodeURIComponent(q)}`),
+  get: (id: string) => api.get(`/files/${id}`),
+  patch: (id: string, body: any) => api.patch(`/files/${id}`, body),
+  del: (id: string) => api.del(`/files/${id}`),
+  import: (file: File, meta: any = {}) => api.upload('/files/import', file, file.name),
 }
 
 export const onlineApi = {

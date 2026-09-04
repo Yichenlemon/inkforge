@@ -24,6 +24,66 @@ export interface ModalState {
   findReplace: boolean
 }
 
+/** 排版默认值（应用 Block 默认样式，配合 applyBlockDefaults） */
+export interface TypoDefaults {
+  defaultFontSize: number
+  defaultLineHeight: number
+  defaultFont: string
+  defaultFontWeight: number
+  defaultLetterSpacing: number
+  defaultJustify: boolean
+  defaultFirstLineIndent: boolean
+  defaultParaSpacing: number
+  headingMaxDepth: number
+  quoteStyle: string
+  listStyle: string
+  codeFont: string
+  inlineCodeColor: string
+}
+
+/** 写作辅助 */
+export interface WritingAssist {
+  punctuationFix: boolean
+  cjkSpacing: boolean
+  quotePair: boolean
+  typoWhitelist: string
+  sensitiveWords: string
+  wordGoal: number
+  pomodoro: boolean
+  autoBackupInterval: number
+}
+
+/** 素材 / 库 */
+export interface MaterialDefaults {
+  defaultInsertMode: string
+  autoCompressOnInsert: boolean
+  imageLazyThreshold: number
+  svgAnimTrigger: string
+  onlineProviderPriority: string
+  lottieRenderLevel: string
+}
+
+/** 导出 */
+export interface ExportDefaults {
+  preset: string
+  stripComments: boolean
+  filenameTpl: string
+  autoCopyClipboard: boolean
+  afterExport: string
+  imageFormat: string
+  thumbWidth: number
+  coverAttached: boolean
+}
+
+/** 性能 / 存储 */
+export interface PerfDefaults {
+  historyKeep: number
+  assetAutoCleanDays: number
+  backupBeforeReset: boolean
+  diagLogLevel: string
+  webVitals: boolean
+}
+
 /** 编辑器级全局设置（localStorage 持久化，跨文档/跨会话生效） */
 export interface EditorSettings {
   stripAnimation: boolean
@@ -38,6 +98,17 @@ export interface EditorSettings {
   showStatusBar: boolean
   compressImages: boolean
   imageQuality: number
+  /** 通用组新增 */
+  canvasBg: 'grid' | 'dots' | 'solid' | 'custom'
+  tabBarPinned: boolean
+  uiScale: number
+  /** 嵌套子分组 */
+  typo: TypoDefaults
+  writing: WritingAssist
+  material: MaterialDefaults
+  exportD: ExportDefaults
+  perf: PerfDefaults
+  shortcuts: Record<string, string>
 }
 
 interface UIState extends EditorSettings {
@@ -97,6 +168,74 @@ const DEFAULTS: EditorSettings = {
   showStatusBar: true,
   compressImages: true,
   imageQuality: 82,
+  /* ---- 通用组新增 ---- */
+  canvasBg: 'grid',
+  tabBarPinned: true,
+  uiScale: 1,
+  /* ---- 排版默认值 ---- */
+  typo: {
+    defaultFontSize: 15,
+    defaultLineHeight: 1.75,
+    defaultFont: 'system',
+    defaultFontWeight: 400,
+    defaultLetterSpacing: 0,
+    defaultJustify: false,
+    defaultFirstLineIndent: false,
+    defaultParaSpacing: 16,
+    headingMaxDepth: 4,
+    quoteStyle: 'bar',
+    listStyle: 'disc',
+    codeFont: 'monospace',
+    inlineCodeColor: '#c0341d',
+  },
+  /* ---- 写作辅助 ---- */
+  writing: {
+    punctuationFix: true,
+    cjkSpacing: true,
+    quotePair: true,
+    typoWhitelist: '',
+    sensitiveWords: '',
+    wordGoal: 0,
+    pomodoro: false,
+    autoBackupInterval: 300,
+  },
+  /* ---- 素材 / 库 ---- */
+  material: {
+    defaultInsertMode: 'cursor',
+    autoCompressOnInsert: true,
+    imageLazyThreshold: 300,
+    svgAnimTrigger: 'auto',
+    onlineProviderPriority: 'unsplash',
+    lottieRenderLevel: 'smil',
+  },
+  /* ---- 导出 ---- */
+  exportD: {
+    preset: 'wechat',
+    stripComments: false,
+    filenameTpl: '{title}-{date}',
+    autoCopyClipboard: false,
+    afterExport: 'none',
+    imageFormat: 'jpeg',
+    thumbWidth: 480,
+    coverAttached: true,
+  },
+  /* ---- 性能 / 存储 ---- */
+  perf: {
+    historyKeep: 60,
+    assetAutoCleanDays: 30,
+    backupBeforeReset: true,
+    diagLogLevel: 'warn',
+    webVitals: false,
+  },
+  /* ---- 快捷键 ---- */
+  shortcuts: {
+    save: 'mod+s',
+    undo: 'mod+z',
+    redo: 'mod+shift+z',
+    command: 'mod+k',
+    export: 'mod+shift+e',
+    zoomIn: 'mod+=',
+  },
 }
 
 const STORE_KEY = 'inkforge-settings'
