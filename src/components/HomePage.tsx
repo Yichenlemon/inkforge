@@ -15,6 +15,14 @@ import { DOC_TEMPLATES, type DocTemplate } from '../lib/docTemplates.js'
 import { toast } from '../lib/ui.js'
 
 /* ------------------------------------------------------------------ */
+/* 文档列表客户端缓存（首屏秒开，避免每次进入首页都重新拉取）            */
+/* ------------------------------------------------------------------ */
+let _docsCache: DocCard[] | null = null
+let _docsCacheAt = 0
+const DOCS_CACHE_TTL = 30_000
+const invalidateDocsCache = () => { _docsCache = null; _docsCacheAt = 0 }
+
+/* ------------------------------------------------------------------ */
 /* 数据类型                                                            */
 /* ------------------------------------------------------------------ */
 interface DocCard {
@@ -94,13 +102,22 @@ export function HomePage() {
   // 最近文档分页状态：每页 12 个，Load More 加载下一页
   const [visibleCount, setVisibleCount] = useState(12)
 
-  const loadList = useCallback(async () => {
+  const loadList = useCallback(async (force = false) => {
+    // 命中缓存且未过期：直接秒出，不再发起请求（首屏 < 1s）
+    if (!force && _docsCache && Date.now() - _docsCacheAt < DOCS_CACHE_TTL) {
+      setDocs(_docsCache)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const res = await docsApi.list()
-      setDocs((res.docs ?? []).map((d: any) => ({
+      const list = (res.docs ?? []).map((d: any) => ({
         ...d, meta: (() => { try { return d.meta ? JSON.parse(d.meta) : {} } catch { return {} } })(),
-      })))
+      }))
+      _docsCache = list
+      _docsCacheAt = Date.now()
+      setDocs(list)
     } catch (e: any) {
       toast(e?.message ?? '加载失败', 'error')
     } finally {
@@ -123,6 +140,7 @@ export function HomePage() {
       await useDoc.getState().save()
       const id = useDoc.getState().doc.id
       useUI.getState().setCurrentDocId(id)
+      invalidateDocsCache()
       useUI.getState().setPage('editor')
       toast(`已新建「${title}」`, 'success')
     } catch (e: any) {
@@ -150,7 +168,7 @@ export function HomePage() {
     setBusyId(id)
     try {
       await docsApi.remove(id)
-      await loadList()
+      await loadList(true)
       toast('已删除', 'success')
     } catch (e: any) {
       toast(e?.message ?? '删除失败', 'error')
@@ -166,7 +184,7 @@ export function HomePage() {
       const src = res.doc
       const newId = `d_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       await docsApi.save({ ...src, id: newId, title: `${src.title} 副本` })
-      await loadList()
+      await loadList(true)
       toast('已复制为副本', 'success')
     } catch (e: any) {
       toast(e?.message ?? '复制失败', 'error')
@@ -231,7 +249,7 @@ export function HomePage() {
             className="h-9 w-64 pl-9 pr-3 rounded-lg bg-black/[0.04] outline-none text-[13px] focus:bg-white focus:ring-2 focus:ring-[#2C6BED]/30 transition-all"
           />
         </div>
-        <button className="btn btn-ghost btn-sm px-1.5" onClick={() => void loadList()} title="刷新">
+        <button className="btn btn-ghost btn-sm px-1.5" onClick={() => void loadList(true)} title="刷新">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
         <button className="btn btn-primary btn-sm" onClick={() => newFromTemplate(DOC_TEMPLATES[0])}>

@@ -91,10 +91,10 @@ export function FileManager() {
   }
 
   return (
-    <div className="fixed inset-0 z-[8000] flex bg-[rgb(var(--ink-bg))] ink-fade-in">
+    <div className="fixed inset-0 z-[8000] flex bg-[rgb(var(--ink-bg))]">
       {/* 左：分面树 */}
       {!narrow && (
-        <div className="w-[220px] shrink-0 border-r border-ink-line bg-white">
+        <div className="w-[220px] shrink-0 border-r border-ink-line bg-white ink-fade-in">
           <FacetTree onSelect={loadFacet} />
         </div>
       )}

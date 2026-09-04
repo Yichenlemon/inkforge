@@ -25,6 +25,25 @@ db.pragma('foreign_keys = ON')
 
 // 旧库兼容：缺列则补列（SQLite 不支持 IF NOT EXISTS for ADD COLUMN）
 try { db.exec('ALTER TABLE docs ADD COLUMN lastOpenedAt INTEGER') } catch { /* column exists */ }
+// v1.4.0：持久化 blockCount / wordCount，避免列表接口每次全量解析文档 JSON
+try { db.exec('ALTER TABLE docs ADD COLUMN blockCount INTEGER NOT NULL DEFAULT 0') } catch { /* exists */ }
+try { db.exec('ALTER TABLE docs ADD COLUMN wordCount INTEGER NOT NULL DEFAULT 0') } catch { /* exists */ }
+
+// 一次性回填历史文档的块数/字数（仅升级后首次启动执行，由 user_version 守卫）
+;(function backfillDocCounts() {
+  const uv = Number(db.pragma('user_version', { simple: true }) || 0)
+  if (uv >= 1) return
+  const rows = db.prepare('SELECT id, data FROM docs').all() as { id: string; data: string }[]
+  const upd = db.prepare('UPDATE docs SET blockCount = @blockCount, wordCount = @wordCount WHERE id = @id')
+  const txn = db.transaction(() => {
+    for (const r of rows) {
+      const { blockCount, wordCount } = computeCounts(r.data)
+      upd.run({ id: r.id, blockCount, wordCount })
+    }
+  })
+  txn()
+  db.exec('PRAGMA user_version = 1')
+})()
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS docs (
@@ -313,8 +332,8 @@ const duplicateDocTxn = db.transaction((srcId: string) => {
   if (!row) return null
   const id = `d_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
   const now = Date.now()
-  db.prepare(`INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt, lastOpenedAt, deletedAt, folderId, sha256, byteSize)
-    VALUES (@id,@title,@themeId,@data,@meta,@createdAt,@updatedAt, NULL, NULL, NULL, NULL, @byteSize)`).run({
+  db.prepare(`INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt, lastOpenedAt, deletedAt, folderId, sha256, byteSize, blockCount, wordCount)
+    VALUES (@id,@title,@themeId,@data,@meta,@createdAt,@updatedAt, NULL, NULL, NULL, NULL, @byteSize, @blockCount, @wordCount)`).run({
     id,
     title: `${row.title} 副本`,
     themeId: row.themeId,
@@ -323,6 +342,8 @@ const duplicateDocTxn = db.transaction((srcId: string) => {
     createdAt: now,
     updatedAt: now,
     byteSize: row.byteSize ?? null,
+    blockCount: row.blockCount ?? 0,
+    wordCount: row.wordCount ?? 0,
   })
   return db.prepare('SELECT * FROM docs WHERE id = ?').get(id) as any
 })
@@ -727,28 +748,46 @@ export interface DocRow {
   updatedAt: number
 }
 
-export function listDocs(): Omit<DocRow, 'data'>[] {
+/**
+ * 从文档 data(JSON) 估算块数与字数。
+ * 仅在「保存」时计算一次并持久化到列；列表接口直接读取，避免每次拉取全量解析文档 JSON。
+ */
+function computeCounts(dataStr: string): { blockCount: number; wordCount: number } {
+  let blockCount = 0
+  let wordCount = 0
+  try {
+    const d = JSON.parse(dataStr)
+    const blocks: any[] = Array.isArray(d?.blocks) ? d.blocks : []
+    blockCount = blocks.length
+    for (const b of blocks) {
+      const html = String(b?.data?.html ?? b?.data?.code ?? b?.data?.title ?? '')
+      wordCount += (html.match(/[\u4e00-\u9fa5]/g) || []).length + (html.match(/[A-Za-z]+/g) || []).length
+    }
+  } catch {}
+  return { blockCount, wordCount }
+}
+
+export interface DocListItem {
+  id: string
+  title: string
+  themeId: string
+  meta: string
+  createdAt: number
+  updatedAt: number
+  lastOpenedAt?: number | null
+  blockCount: number
+  wordCount: number
+}
+
+export function listDocs(): DocListItem[] {
   // 「最近 = 最后活动」：同时按 updatedAt 和 lastOpenedAt 取最大值倒序
+  // 仅读取轻量列（不再 SELECT 巨大的 data），块数/字数直接取自持久化列
   const rows = db.prepare(
-    `SELECT id, title, themeId, meta, data, createdAt, updatedAt, lastOpenedAt
+    `SELECT id, title, themeId, meta, createdAt, updatedAt, lastOpenedAt, blockCount, wordCount
      FROM docs
      ORDER BY MAX(COALESCE(lastOpenedAt, 0), updatedAt) DESC`,
-  ).all() as (Omit<DocRow, 'data'> & { data: string })[]
-  return rows.map((r) => {
-    let blockCount = 0
-    let wordCount = 0
-    try {
-      const d = JSON.parse(r.data)
-      const blocks: any[] = Array.isArray(d?.blocks) ? d.blocks : []
-      blockCount = blocks.length
-      for (const b of blocks) {
-        const html = String(b?.data?.html ?? b?.data?.code ?? b?.data?.title ?? '')
-        wordCount += (html.match(/[\u4e00-\u9fa5]/g) || []).length + (html.match(/[A-Za-z]+/g) || []).length
-      }
-    } catch {}
-    const { data: _d, ...rest } = r
-    return { ...rest, blockCount, wordCount }
-  })
+  ).all() as DocListItem[]
+  return rows
 }
 
 /** 轻量更新 lastOpenedAt（防抖到 setImmediate 即可） */
@@ -781,14 +820,17 @@ export function setDocLock(id: string, lock: { locked: boolean; lockedBy?: strin
 export function upsertDoc(row: DocRow): void {
   const cur = getDocRow(row.id) as any
   const lockVal = cur?.lock ?? null
+  const dataStr = typeof row.data === 'string' ? row.data : JSON.stringify(row.data ?? '{}')
+  const { blockCount, wordCount } = computeCounts(dataStr)
   db.prepare(`
-    INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt, lock)
-    VALUES (@id, @title, @themeId, @data, @meta, @createdAt, @updatedAt, @lock)
+    INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt, lock, blockCount, wordCount)
+    VALUES (@id, @title, @themeId, @data, @meta, @createdAt, @updatedAt, @lock, @blockCount, @wordCount)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title, themeId = excluded.themeId, data = excluded.data,
       meta = excluded.meta, updatedAt = excluded.updatedAt,
+      blockCount = excluded.blockCount, wordCount = excluded.wordCount,
       lock = COALESCE((SELECT lock FROM docs WHERE id = excluded.id), excluded.lock)
-  `).run({ ...row, lock: lockVal })
+  `).run({ ...row, lock: lockVal, blockCount, wordCount })
 }
 
 export function deleteDoc(id: string): void {
