@@ -1,20 +1,18 @@
 import React, { useMemo } from 'react'
 import {
-  CheckCircle2, AlertTriangle, CircleAlert, MousePointerClick, Save, Layers, Type, Image as ImageIcon, Smartphone, Monitor, Code2, Loader2,
+  CheckCircle2, AlertTriangle, CircleAlert, MousePointerClick, Save, Type, Image as ImageIcon, Loader2,
 } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
 import { BLOCK_TYPE_LABEL } from '../lib/components.js'
 import type { Block } from '../../shared/types.js'
 
-/** 底部实时编辑状态栏：左 选区 ｜中 统计 ｜右 模式+诊断+保存 */
+/** 底部实时编辑状态栏：左 选区 ｜中 统计 ｜右 诊断+保存（视图切换已合并到顶栏，设计 §13.1） */
 export function StatusBar({ diagnostics }: { diagnostics: any[] }) {
   const doc = useDoc((s) => s.doc)
   const dirty = useDoc((s) => s.dirty)
   const saving = useDoc((s) => s.saving)
   const selectedId = useUI((s) => s.selectedId)
-  const viewMode = useUI((s) => s.viewMode)
-  const setViewMode = useUI((s) => s.setViewMode)
   const maxWidth = useUI((s) => s.maxWidth)
   const openModal = useUI((s) => s.openModal)
 
@@ -41,8 +39,6 @@ export function StatusBar({ diagnostics }: { diagnostics: any[] }) {
   const errCount = diagnostics.filter((d) => d.level === 'error').length
   const warnCount = diagnostics.filter((d) => d.level === 'warning').length
 
-  const ViewIcon = viewMode === 'edit' ? Layers : viewMode === 'preview' ? Smartphone : Code2
-
   return (
     <div className="h-7 shrink-0 bg-[#FAF9F6] border-t border-ink-line flex items-center text-[11px] text-ink-text-3 select-none no-print divide-x divide-ink-line">
       {/* 选区状态 */}
@@ -67,18 +63,6 @@ export function StatusBar({ diagnostics }: { diagnostics: any[] }) {
       </div>
 
       <div className="flex-1 min-w-0" />
-
-      {/* 模式切换 */}
-      <div className="flex items-center gap-0.5 px-2">
-        {([['edit', Layers, '编辑'], ['preview', Smartphone, '预览'], ['code', Code2, '源码']] as const).map(([m, Icon, l]) => (
-          <button key={m} onClick={() => setViewMode(m)}
-            title={l}
-            className={`h-5 px-1.5 rounded flex items-center gap-1 text-[10.5px] transition-colors ${
-              viewMode === m ? 'bg-[#2C6BED] text-white' : 'text-ink-text-3 hover:bg-black/[0.06]'}`}>
-            <Icon size={10} /><span className="hidden md:inline">{l}</span>
-          </button>
-        ))}
-      </div>
 
       {/* 诊断 */}
       <button className="flex items-center px-2 h-full hover:bg-black/[0.04]" title="查看诊断详情" onClick={() => openModal('export')}>

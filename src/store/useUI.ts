@@ -101,6 +101,8 @@ export interface EditorSettings {
   showStatusBar: boolean
   compressImages: boolean
   imageQuality: number
+  /** 画布缩放器：25–400，仅影响编辑区 CSS transform，不影响 articleWidth 与导出 */
+  canvasZoom: number
   /** 通用组新增 */
   canvasBg: 'grid' | 'dots' | 'solid' | 'custom'
   tabBarPinned: boolean
@@ -151,6 +153,7 @@ interface UIState extends EditorSettings {
   setShowStatusBar: (v: boolean) => void
   setCompressImages: (v: boolean) => void
   setImageQuality: (v: number) => void
+  setCanvasZoom: (v: number) => void
   /** 批量应用（设置面板里一次性保存） */
   applySettings: (patch: Partial<EditorSettings>) => void
 
@@ -171,6 +174,7 @@ const DEFAULTS: EditorSettings = {
   showStatusBar: true,
   compressImages: true,
   imageQuality: 82,
+  canvasZoom: 100,
   /* ---- 通用组新增 ---- */
   canvasBg: 'grid',
   tabBarPinned: true,
@@ -296,6 +300,7 @@ export const useUI = create<UIState>((set, get) => ({
   setShowStatusBar: (v) => { set({ showStatusBar: v }); persist({ ...get(), showStatusBar: v }) },
   setCompressImages: (v) => { set({ compressImages: v }); persist({ ...get(), compressImages: v }) },
   setImageQuality: (v) => { set({ imageQuality: v }); persist({ ...get(), imageQuality: v }) },
+  setCanvasZoom: (v) => { const z = Math.min(400, Math.max(25, Math.round(v))); set({ canvasZoom: z }); persist({ ...get(), canvasZoom: z }) },
   applySettings: (patch) => { set(patch); persist({ ...get(), ...patch }) },
 
   openModal: (k) => set((s) => ({ modals: { ...s.modals, [k]: true } })),

@@ -47,6 +47,7 @@ export interface FileState {
   openManager: (facet?: Facet) => void
   closeManager: () => void
   setInsertMode: (v: boolean) => void
+  setLocked: (id: string, locked: boolean) => void
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
@@ -128,6 +129,9 @@ export const useFileStore = create<FileState>((set, get) => ({
   openManager: (facet) => set((s) => ({ managerOpen: true, facet: facet ?? s.facet })),
   closeManager: () => set({ managerOpen: false }),
   setInsertMode: (v) => set({ managerInsertMode: v }),
+  setLocked: (id, locked) => set((s) => ({
+    openDocs: s.openDocs.map((o) => (o.id === id ? { ...o, locked } : o)),
+  })),
 }))
 
 /** 非 hook 方式访问 store（注册表 / 命令面板等场景使用） */

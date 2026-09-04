@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   PanelLeft, PanelRight, Undo2, Redo2, Save, Eye, Pencil, Code2,
-  FileDown, Send, CheckCircle2, Search, Loader2, History as HistoryIcon, Settings as SettingsIcon, FileText,
+  FileDown, Send, CheckCircle2, Loader2, History as HistoryIcon, Settings as SettingsIcon, FileText,
 } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
@@ -28,6 +28,7 @@ import { useFileStore } from '../filemgr/useFileStore.js'
 import InsertAudioDialog from './InsertAudioDialog.jsx'
 import InsertVideoDialog from './InsertVideoDialog.jsx'
 import { MultiDocTabs } from './MultiDocTabs.jsx'
+import { EditorCornerControls } from './EditorCornerControls.jsx'
 import { StatusBar } from './StatusBar.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
@@ -47,6 +48,8 @@ export default function App() {
   const setNarrow = useUI((s) => s.setNarrow)
   const openModal = useUI((s) => s.openModal)
   const select = useUI((s) => s.select)
+  const canvasZoom = useUI((s) => s.canvasZoom)
+  const docLocked = useFileStore((s) => s.openDocs.find((o) => o.id === s.activeId)?.locked ?? false)
   const { html, loading, stats, diagnostics, reload } = useCompiledPreview()
 
   /* 启动时如果有上次打开的文档，直接进编辑器（走 useFileStore，使多文档 Tab 同步） */
@@ -228,10 +231,22 @@ export default function App() {
         )}
 
         {/* 中 */}
-        <main className="flex-1 min-w-0 flex flex-col">
-          {viewMode === 'edit' && <Canvas />}
+        <main className="flex-1 min-w-0 flex flex-col relative">
+          {viewMode === 'edit' && (
+            <div id="editor-scroll" className="flex-1 overflow-auto min-h-0">
+              <div style={{ transform: `scale(${canvasZoom / 100})`, transformOrigin: 'top center', width: '100%' }}>
+                <Canvas />
+              </div>
+            </div>
+          )}
           {viewMode === 'preview' && <Preview html={html} loading={loading} onReload={reload} />}
           {viewMode === 'code' && <CodeView html={html} loading={loading} diagnostics={diagnostics} stats={stats} onJump={jumpTo} />}
+          {/* 文件锁：锁定时盖 1% 红蒙层拦截画布鼠标编辑（设计 §13.2.2） */}
+          {viewMode === 'edit' && docLocked && (
+            <div className="absolute inset-0 z-10 bg-[#D64545]/10 pointer-events-auto flex items-start justify-center pt-3">
+              <span className="chip bg-[#D64545] text-white text-[11px] shadow">🔒 已锁定 · 画布只读（点击右下角锁解锁）</span>
+            </div>
+          )}
         </main>
 
         {/* 右 */}
@@ -254,13 +269,8 @@ export default function App() {
       {/* 底部实时状态栏（仅编辑器页） */}
       {page === 'editor' && <StatusBar diagnostics={diagnostics} />}
 
-      {/* 命令面板提示 */}
-      {page === 'editor' && (
-      <button className="fixed bottom-3.5 right-3.5 btn btn-soft btn-sm shadow-lg z-20 no-print"
-        onClick={() => openModal('command')}>
-        <Search size={12} /> 命令面板 <span className="chip bg-black/[0.06] text-ink-text-3 ml-0.5">⌘K</span>
-      </button>
-      )}
+      {/* 右下角统一控件簇：文件锁 + 画布缩放器 + 命令面板（设计 §13.2） */}
+      {page === 'editor' && <EditorCornerControls html={html} loading={loading} />}
 
       {/* 弹层 */}
       <ExportDialog diagnostics={diagnostics} stats={stats} onReload={reload} />
