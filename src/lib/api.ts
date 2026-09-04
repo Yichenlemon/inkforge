@@ -124,6 +124,7 @@ export const libraryApi = {
   delTemplate: (id: string) => api.del(`/templates/${id}`),
   accounts: () => api.get('/accounts'),
   addAccount: (name: string, appId: string, appSecret: string) => api.post('/accounts', { name, appId, appSecret }),
+  updateAccount: (id: string, patch: { name?: string; appId?: string; appSecret?: string }) => api.patch(`/accounts/${id}`, patch),
   delAccount: (id: string) => api.del(`/accounts/${id}`),
 }
 

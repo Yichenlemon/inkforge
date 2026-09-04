@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, FolderOpen, Clock } from 'lucide-react'
 import { useDoc, blockOf } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
+import { openFileManager } from '../filemgr/index.js'
 import { toast, downloadText } from '../lib/ui.js'
 import { compileApi } from '../lib/api.js'
 
@@ -71,6 +72,8 @@ export function MenuBar() {
       key: 'file', label: '文件', items: [
         { label: '新建文档', run: () => { ds().newDoc(); ui().setPage('editor'); setOpen(null) } },
         { label: '打开文档首页', run: () => { ui().setPage('home'); setOpen(null) } },
+        { label: '文件管理器…', hint: '⌘⇧O', run: () => { openFileManager('all'); setOpen(null) } },
+        { label: '打开最近文档…', run: () => { openFileManager('recent'); setOpen(null) } },
         { sep: true },
         { label: '保存', hint: '⌘S', run: () => { void save(); setOpen(null) } },
         {

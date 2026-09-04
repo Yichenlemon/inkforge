@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listSnippets, insertSnippet, deleteSnippet, listTemplates, insertTemplate, getTemplate, deleteTemplate, listAccounts, insertAccount, deleteAccount } from '../db.js'
+import { listSnippets, insertSnippet, deleteSnippet, listTemplates, insertTemplate, getTemplate, deleteTemplate, listAccounts, insertAccount, deleteAccount, updateAccount } from '../db.js'
 import { asyncHandler, ok, badRequest, notFound, str } from '../lib/http.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -90,4 +90,13 @@ libraryRouter.post('/accounts', asyncHandler(async (req, res) => {
 libraryRouter.delete('/accounts/:id', asyncHandler(async (req, res) => {
   deleteAccount(req.params.id)
   return ok(res, {})
+}))
+
+libraryRouter.patch('/accounts/:id', asyncHandler(async (req, res) => {
+  updateAccount(req.params.id, {
+    name: typeof req.body?.name === 'string' ? req.body.name : undefined,
+    appId: typeof req.body?.appId === 'string' ? req.body.appId : undefined,
+    appSecret: typeof req.body?.appSecret === 'string' && req.body.appSecret ? req.body.appSecret : undefined,
+  })
+  return ok(res, { id: req.params.id })
 }))

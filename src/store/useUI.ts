@@ -22,6 +22,9 @@ export interface ModalState {
   history: boolean
   markdown: boolean
   findReplace: boolean
+  accounts: boolean
+  insertAudio: boolean
+  insertVideo: boolean
 }
 
 /** 排版默认值（应用 Block 默认样式，配合 applyBlockDefaults） */
@@ -268,6 +271,7 @@ export const useUI = create<UIState>((set, get) => ({
     export: false, publish: false, diagnostics: false, tools: false, imageEditor: false,
     lottie: false, anim: false, docs: false, command: false, import: false, settings: false, cover: false,
     history: false, markdown: false, findReplace: false,
+    accounts: false, insertAudio: false, insertVideo: false,
   },
 
   setLeftTab: (t) => set((s) => ({ leftTab: t, leftOpen: true })),

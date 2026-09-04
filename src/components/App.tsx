@@ -23,6 +23,9 @@ import { BrandLogo } from './BrandLogo.jsx'
 import { MarkdownDialog } from './MarkdownDialog.jsx'
 import { FindReplaceDialog } from './FindReplaceDialog.jsx'
 import { SettingsDialog } from './SettingsDialog.jsx'
+import { FileManager, openFileManager } from '../filemgr/index.js'
+import InsertAudioDialog from './InsertAudioDialog.jsx'
+import InsertVideoDialog from './InsertVideoDialog.jsx'
 import { StatusBar } from './StatusBar.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
@@ -70,6 +73,7 @@ export default function App() {
       if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); openModal('command'); return }
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); return }
       if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); openModal('export'); return }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openFileManager('all'); return }
       if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); setViewMode(viewMode === 'preview' ? 'edit' : 'preview'); return }
       if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openModal('findReplace'); return }
       if (mod && e.key.toLowerCase() === 'z' && !typing) {
@@ -267,6 +271,9 @@ export default function App() {
       <MarkdownDialog />
       <FindReplaceDialog />
       <SettingsDialog />
+      <FileManager />
+      <InsertAudioDialog />
+      <InsertVideoDialog />
       <ToastHost />
     </div>
   )

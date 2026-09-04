@@ -765,28 +765,184 @@ export function ButtonView({ block, data, tokens }: BlockViewProps<ButtonData>) 
   )
 }
 
+/** 从粘贴的腾讯视频 / 微信链接里尽量提取 vid */
+function parseTencentVid(input: string): string | null {
+  if (!input) return null
+  try {
+    const u = new URL(input)
+    const v = u.searchParams.get('vid')
+    if (v) return v
+  } catch { /* 非 URL */ }
+  const qm = input.match(/[?&]vid=([^&]+)/i)
+  if (qm) return qm[1]
+  const pm = input.match(/\/(?:page|cover|detail)\/([a-zA-Z0-9]+)/i)
+  if (pm) return pm[1]
+  if (/^[a-zA-Z0-9]+$/.test(input.trim())) return input.trim()
+  return null
+}
+
+/** 从粘贴的 QQ音乐 分享链接里尽量提取歌曲 ID */
+function parseQQSongId(input: string): string | null {
+  if (!input) return null
+  try {
+    const u = new URL(input)
+    const fromQuery = u.searchParams.get('songid') || u.searchParams.get('song_id') || u.searchParams.get('songmid')
+    if (fromQuery) return fromQuery
+    const m = input.match(/\/(?:songDetail|playsong|song)\/([^/?#]+)/i)
+    if (m) return m[1]
+  } catch {
+    const m = input.match(/\/(?:songDetail|playsong|song)\/([^/?#]+)/i)
+    if (m) return m[1]
+    const qm = input.match(/[?&](?:songid|song_id|songmid)=([^&]+)/i)
+    if (qm) return qm[1]
+  }
+  if (/^[0-9a-zA-Z]+$/.test(input.trim())) return input.trim()
+  return null
+}
+
 export function VideoView({ block, data, tokens }: BlockViewProps<VideoData>) {
   const up = useUpdate(block)
+  const [source, setSource] = useState<'upload' | 'tencent' | 'media'>('upload')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    up({ src: URL.createObjectURL(f), title: data.title || f.name.replace(/\.[^.]+$/, '') })
+    e.target.value = ''
+  }
+
+  const onTencent = (raw: string) => up({ tencentVid: parseTencentVid(raw) ?? raw })
+
   return (
     <div className="space-y-2">
-      <ImagePicker value={data.poster} onChange={(u) => up({ poster: u })} hint="封面图" />
-      <input className="input" placeholder="视频标题" value={data.title ?? ''} onChange={(e) => up({ title: e.target.value })} />
-      <input className="input" placeholder="腾讯视频 vid（官方组件）" value={data.tencentVid ?? ''} onChange={(e) => up({ tencentVid: e.target.value })} />
-      <input className="input" placeholder="视频地址（本地预览）" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
+      {data.src && (
+        <video controls poster={data.poster} src={data.src} className="w-full rounded-lg bg-black"
+          style={{ borderRadius: tokens.radius }} />
+      )}
+
+      <Field label="标题">
+        <input className="input" placeholder="视频标题" value={data.title ?? ''} onChange={(e) => up({ title: e.target.value })} />
+      </Field>
+
+      <Field label="来源">
+        <Segmented value={source} onChange={setSource} options={[
+          { value: 'upload', label: '本地 MP4' },
+          { value: 'tencent', label: '腾讯视频' },
+          { value: 'media', label: '素材库' },
+        ]} />
+      </Field>
+
+      {source === 'upload' && (
+        <Field label="视频">
+          <div className="flex items-center gap-2">
+            <button className="btn btn-soft btn-sm" onClick={() => fileRef.current?.click()}>本地文件</button>
+            <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={onFile} />
+            <input className="input" placeholder="或填写视频地址（本地预览）" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
+          </div>
+        </Field>
+      )}
+
+      {source === 'tencent' && (
+        <Field label="链接">
+          <input className="input" placeholder="粘贴 v.qq.com / mp.weixin.qq.com 链接" value={data.tencentVid ?? ''} onChange={(e) => onTencent(e.target.value)} />
+          <div className="text-[11px] text-ink-text-3 mt-0.5">自动提取 vid，导出为 &lt;mp-common-video&gt; 组件。</div>
+        </Field>
+      )}
+
+      {source === 'media' && (
+        <Field label="media_id">
+          <input className="input" placeholder="微信素材 media_id" value={data.mediaId ?? ''} onChange={(e) => up({ mediaId: e.target.value })} />
+          <div className="text-[11px] text-ink-text-3 mt-0.5">导出前需在微信素材库上传并填 media_id。</div>
+        </Field>
+      )}
+
+      <Field label="海报">
+        <input className="input" placeholder="海报图 URL" value={data.poster ?? ''} onChange={(e) => up({ poster: e.target.value })} />
+      </Field>
     </div>
   )
 }
 
 export function AudioView({ block, data, tokens }: BlockViewProps<AudioData>) {
   const up = useUpdate(block)
+  const [source, setSource] = useState<'upload' | 'qqmusic'>(data.source ?? 'upload')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    up({ src: URL.createObjectURL(f), title: data.title || f.name.replace(/\.[^.]+$/, ''), source: 'upload' })
+    e.target.value = ''
+  }
+
+  const onQQ = (raw: string) => up({ songId: parseQQSongId(raw) ?? raw })
+
   return (
-    <div className="flex gap-3 items-center rounded-lg p-3" style={{ background: tokens.colorSurface, borderRadius: tokens.radius }}>
-      <div className="w-16 shrink-0"><ImagePicker value={data.cover} onChange={(u) => up({ cover: u })} square /></div>
-      <div className="flex-1 space-y-1.5">
+    <div className="space-y-2">
+      {data.src && <audio controls src={data.src} className="w-full" />}
+
+      <Field label="标题">
         <input className="input" placeholder="音频标题" value={data.title ?? ''} onChange={(e) => up({ title: e.target.value })} />
-        <input className="input" placeholder="主播 / 歌手" value={data.singer ?? ''} onChange={(e) => up({ singer: e.target.value })} />
-        <input className="input" placeholder="音频地址" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
-      </div>
+      </Field>
+
+      <Field label="来源">
+        <Segmented value={source} onChange={(v) => { setSource(v); up({ source: v }) }} options={[
+          { value: 'upload', label: '本地上传' },
+          { value: 'qqmusic', label: 'QQ音乐' },
+        ]} />
+      </Field>
+
+      {source === 'upload' && (
+        <>
+          <Field label="音频">
+            <div className="flex items-center gap-2">
+              <button className="btn btn-soft btn-sm" onClick={() => fileRef.current?.click()}>本地文件</button>
+              <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={onFile} />
+              <input className="input" placeholder="或填写音频地址" value={data.src ?? ''} onChange={(e) => up({ src: e.target.value })} />
+            </div>
+          </Field>
+          <Field label="media_id">
+            <input className="input" placeholder="微信素材 media_id" value={data.mediaId ?? ''} onChange={(e) => up({ mediaId: e.target.value })} />
+            <div className="text-[11px] text-ink-text-3 mt-0.5">导出前需在微信素材库上传并填 media_id。</div>
+          </Field>
+          <Field label="封面">
+            <input className="input" placeholder="封面 URL" value={data.cover ?? ''} onChange={(e) => up({ cover: e.target.value })} />
+          </Field>
+          <Field label="时长">
+            <NumberInput value={data.duration} onChange={(v) => up({ duration: v })} suffix="秒" />
+          </Field>
+        </>
+      )}
+
+      {source === 'qqmusic' && (
+        <>
+          <Field label="歌名">
+            <input className="input" placeholder="歌曲名" value={data.songName ?? ''} onChange={(e) => up({ songName: e.target.value })} />
+          </Field>
+          <Field label="歌手">
+            <input className="input" placeholder="歌手" value={data.singer ?? ''} onChange={(e) => up({ singer: e.target.value })} />
+          </Field>
+          <Field label="ID/链接">
+            <input className="input" placeholder="歌曲 ID 或粘贴 QQ音乐 分享链接" value={data.songId ?? ''} onChange={(e) => onQQ(e.target.value)} />
+            <div className="text-[11px] text-ink-text-3 mt-0.5">支持从 QQ音乐 分享链接自动提取歌曲 ID。</div>
+          </Field>
+          <Field label="封面">
+            <input className="input" placeholder="封面 URL" value={data.coverUrl ?? ''} onChange={(e) => up({ coverUrl: e.target.value })} />
+          </Field>
+          {data.coverUrl && (
+            <div className="flex items-center gap-3 rounded-lg p-3" style={{ background: tokens.colorSurface, borderRadius: tokens.radius }}>
+              <img src={data.coverUrl} alt="" className="w-14 h-14 rounded object-cover shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium truncate">{data.songName || '未知歌曲'}</div>
+                <div className="text-[11px] text-ink-text-3 truncate">{data.singer || '未知歌手'}</div>
+              </div>
+              <button className="btn btn-soft btn-sm shrink-0" title="播放" onClick={() => toast('需在公众号后台播放（QQ音乐）', 'info')}><Play size={14} /></button>
+            </div>
+          )}
+          <div className="text-[11px] text-ink-text-3">需在公众号后台播放（QQ音乐），此处仅作静态展示。</div>
+        </>
+      )}
     </div>
   )
 }

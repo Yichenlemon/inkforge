@@ -1,18 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Send, Loader2, CheckCircle2, XCircle, RefreshCw, Trash2, Plus, Upload, Smartphone } from 'lucide-react'
+import { Send, Loader2, CheckCircle2, XCircle, RefreshCw, Trash2, Upload, Smartphone, Settings2 } from 'lucide-react'
 import { libraryApi, wechatApi, assetsApi } from '../lib/api.js'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
 import { Modal, toast, Field, Toggle, Spinner, Empty, Select } from '../lib/ui.js'
+import { getDefaultAccountId } from '../lib/accountDefault.js'
+import AccountManager from './AccountManager.js'
 
 export function PublishDialog() {
   const open = useUI((s) => s.modals.publish)
   const close = useUI((s) => s.closeModal)
+  const openAccounts = useUI((s) => s.openModal)
   const doc = useDoc((s) => s.doc)
   const stripAnimation = useUI((s) => s.stripAnimation)
   const [tab, setTab] = useState<'push' | 'accounts' | 'drafts'>('push')
   const [accounts, setAccounts] = useState<any[]>([])
   const [accountId, setAccountId] = useState('')
+  const [defaultId, setDefaultId] = useState('')
   const [thumbMediaId, setThumbMediaId] = useState('')
   const [coverAssetId, setCoverAssetId] = useState('')
   const [diag, setDiag] = useState<any>(null)
@@ -23,8 +27,12 @@ export function PublishDialog() {
 
   const refresh = async () => {
     const r = await libraryApi.accounts()
-    setAccounts(r.accounts ?? [])
-    if (!accountId && r.accounts?.[0]) setAccountId(r.accounts[0].id)
+    const list = r.accounts ?? []
+    setAccounts(list)
+    const def = getDefaultAccountId()
+    const validDefault = def && list.some((a: any) => a.id === def) ? def : (list[0]?.id ?? '')
+    setDefaultId(validDefault)
+    if (!accountId || !list.some((a: any) => a.id === accountId)) setAccountId(validDefault)
   }
   useEffect(() => { if (open) void refresh() }, [open])
 
@@ -77,6 +85,7 @@ export function PublishDialog() {
   useEffect(() => { if (open && tab === 'drafts' && accountId) void loadDrafts() }, [open, tab, accountId])
 
   return (
+    <>
     <Modal open={open} onClose={() => close('publish')} title="发布到公众号" width={720}>
       <div className="flex gap-1 mb-3">
         {([['push', '推送草稿'], ['accounts', '账号管理'], ['drafts', '草稿箱']] as const).map(([v, l]) => (
@@ -88,8 +97,13 @@ export function PublishDialog() {
       {tab === 'push' && (
         <div className="space-y-3">
           <Field label="公众号">
-            <Select value={accountId} onChange={setAccountId}
-              options={accounts.length ? accounts.map((a) => ({ value: a.id, label: a.name })) : [{ value: '', label: '未配置账号' }]} />
+            <div className="flex items-center gap-2">
+              <Select value={accountId} onChange={setAccountId}
+                options={accounts.length ? accounts.map((a) => ({ value: a.id, label: a.name })) : [{ value: '', label: '未配置账号' }]} />
+              <button className="btn btn-soft btn-sm shrink-0" onClick={() => openAccounts('accounts')} title="管理公众号账号">
+                <Settings2 size={13} /> 管理
+              </button>
+            </div>
           </Field>
 
           <button className="btn btn-soft w-full" disabled={!accountId || !!busy} onClick={runDiagnose}>
@@ -137,7 +151,21 @@ export function PublishDialog() {
         </div>
       )}
 
-      {tab === 'accounts' && <AccountsTab onChanged={refresh} />}
+      {tab === 'accounts' && (
+        <div className="space-y-3">
+          <div className="rounded-lg bg-[#EEF4FF] border border-[#D6E4FF] px-3 py-2.5 text-[12px] text-[#1F3A6E] leading-relaxed">
+            在「公众号后台 → 设置与开发 → 基本配置」拿到 AppID 和 AppSecret，
+            并把运行本工具的机器公网 IP 加进 IP 白名单，否则会报 40164。
+          </div>
+          <button className="btn btn-primary w-full" onClick={() => openAccounts('accounts')}>
+            <Settings2 size={13} /> 打开账号管理器
+          </button>
+          <div className="text-[12px] text-ink-text-2">
+            已配置 {accounts.length} 个账号{defaultId ? `，默认：${accounts.find((a: any) => a.id === defaultId)?.name ?? '（已删除）'}` : ''}。
+          </div>
+          <button className="btn btn-soft btn-sm w-full" onClick={refresh}>刷新列表</button>
+        </div>
+      )}
 
       {tab === 'drafts' && (
         <div>
@@ -169,6 +197,8 @@ export function PublishDialog() {
         </div>
       )}
     </Modal>
+      <AccountManager onChanged={refresh} />
+    </>
   )
 }
 
@@ -191,50 +221,3 @@ function CoverAssetPicker({ value, onChange }: { value: string; onChange: (v: st
   )
 }
 
-function AccountsTab({ onChanged }: { onChanged: () => void }) {
-  const [name, setName] = useState('')
-  const [appId, setAppId] = useState('')
-  const [secret, setSecret] = useState('')
-  const [list, setList] = useState<any[]>([])
-  const [busy, setBusy] = useState(false)
-
-  const load = async () => { setList((await libraryApi.accounts()).accounts ?? []) }
-  useEffect(() => { void load() }, [])
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-lg bg-[#EEF4FF] border border-[#D6E4FF] px-3 py-2.5 text-[12px] text-[#1F3A6E] leading-relaxed">
-        在「公众号后台 → 设置与开发 → 基本配置」拿到 AppID 和 AppSecret，
-        并把运行本工具的机器公网 IP 加进 IP 白名单，否则会报 40164。
-      </div>
-      <Field label="名称"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="我的公众号" /></Field>
-      <Field label="AppID"><input className="input" value={appId} onChange={(e) => setAppId(e.target.value)} /></Field>
-      <Field label="AppSecret"><input className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} /></Field>
-      <button className="btn btn-primary w-full" disabled={busy || !appId || !secret} onClick={async () => {
-        setBusy(true)
-        try {
-          await libraryApi.addAccount(name || '未命名公众号', appId, secret)
-          setName(''); setAppId(''); setSecret('')
-          await load(); onChanged()
-          toast('已添加', 'success')
-        } catch (e: any) { toast(e?.message ?? '添加失败', 'error') }
-        finally { setBusy(false) }
-      }}><Plus size={13} /> 添加账号</button>
-
-      <div className="border-t border-ink-line pt-3">
-        {!list.length && <Empty text="还没有配置账号" />}
-        {list.map((a) => (
-          <div key={a.id} className="panel p-2.5 mb-1.5 flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium truncate">{a.name}</div>
-              <div className="text-[10.5px] text-ink-text-3 truncate">{a.appId}</div>
-            </div>
-            <button className="btn btn-ghost btn-xs" onClick={async () => {
-              await libraryApi.delAccount(a.id); await load(); onChanged(); toast('已删除')
-            }}><Trash2 size={12} /></button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}

@@ -195,8 +195,14 @@ export const REGISTRY: Partial<Record<FileActionId, FileAction>> = {
     label: '在历史中定位', icon: 'History', appliesTo: ['doc'],
     run: async (item) => { const { useUI } = await getStores(); useUI.getState().setCurrentDocId(item.id); useUI.getState().openModal('history'); toast('已打开历史', 'info') },
   },
-  'insert-audio': { label: '插入音频', icon: 'Music', appliesTo: ['doc'], run: later() },
-  'insert-video': { label: '插入视频', icon: 'Video', appliesTo: ['doc'], run: later() },
+  'insert-audio': {
+    label: '插入音频', icon: 'Music', appliesTo: ['doc'],
+    run: () => { import('../store/useUI.js').then((m) => m.useUI.getState().openModal('insertAudio')) },
+  },
+  'insert-video': {
+    label: '插入视频', icon: 'Video', appliesTo: ['doc'],
+    run: () => { import('../store/useUI.js').then((m) => m.useUI.getState().openModal('insertVideo')) },
+  },
   lock: { label: '锁定', icon: 'Lock', appliesTo: ALL, run: later() },
   unlock: { label: '解锁', icon: 'Unlock', appliesTo: ALL, run: later() },
   'toggle-lock': { label: '切换锁定', icon: 'Lock', appliesTo: ALL, run: later() },

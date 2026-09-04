@@ -688,3 +688,13 @@ export function getAccount(id: string) {
 export function deleteAccount(id: string): void {
   db.prepare('DELETE FROM accounts WHERE id = ?').run(id)
 }
+
+export function updateAccount(id: string, patch: { name?: string; appId?: string; appSecret?: string }): void {
+  const fields: string[] = []
+  const params: Record<string, unknown> = { id }
+  if (patch.name !== undefined) { fields.push('name = @name'); params.name = patch.name }
+  if (patch.appId !== undefined) { fields.push('appId = @appId'); params.appId = patch.appId }
+  if (patch.appSecret !== undefined) { fields.push('appSecret = @appSecret'); params.appSecret = patch.appSecret }
+  if (!fields.length) return
+  db.prepare(`UPDATE accounts SET ${fields.join(', ')} WHERE id = @id`).run(params)
+}

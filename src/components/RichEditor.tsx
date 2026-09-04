@@ -539,6 +539,8 @@ function BubbleToolbar({ editor, onChange }: { editor: Editor; onChange: (h: str
                   const right = window.confirm('确定 = 右浮动（文字环绕），取消 = 左浮动')
                   insertSibling('below', makeBlock('image', { src: url, alt: '', display: right ? 'float-right' : 'float-left', width: '45%' }))
                 }}>浮动图文 ↓</InsBtn>
+                <InsBtn onClick={() => { useUI.getState().openModal('insertAudio'); setMenu(null) }}>♪ 音频</InsBtn>
+                <InsBtn onClick={() => { useUI.getState().openModal('insertVideo'); setMenu(null) }}>▶ 视频</InsBtn>
               </div>
               <div className="text-[10.5px] font-semibold text-ink-text-3 mb-1 flex items-center gap-1"><Layers size={10} /> 叠加角标（层级选择：压在其他元素上方 / 垫在下方）</div>
               <div className="grid grid-cols-3 gap-1">

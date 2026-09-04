@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { emptyDoc, seedDoc, makeBlock, createId, migrateDoc, type Block, type Doc, type BlockStyle } from '../../shared/types.js'
+import { emptyDoc, seedDoc, makeBlock, createId, migrateDoc, applyBlockDefaults, type Block, type Doc, type BlockStyle } from '../../shared/types.js'
 import { docsApi } from '../lib/api.js'
 import { useUI } from './useUI.js'
 
@@ -45,12 +45,18 @@ interface DocState {
   canUndo: () => boolean
   canRedo: () => boolean
 
+  /** 用当前排版默认值（applyBlockDefaults）非破坏式填充整篇文档的区块样式 */
+  applyDefaultsToCurrent: () => void
+
   save: () => Promise<void>
   saveSnapshot: (label?: string) => Promise<void>
   loadFromServer: (id: string) => Promise<void>
 }
 
 const MAX_HISTORY = 60
+
+/** 用当前排版默认值非破坏式填充一组区块（仅补全未显式设置的样式字段） */
+const withDefaults = (blocks: Block[]): Block[] => blocks.map((b) => applyBlockDefaults(b, useUI.getState()))
 
 /** 根据变更类型生成可读标签 */
 function labelFor(mutatorDesc: string): string {
@@ -82,24 +88,14 @@ export const useDoc = create<DocState>((set, get) => {
     future: [],
     transientBase: null,
 
-    load: (doc) => set({ doc: migrateDoc(doc), dirty: false, past: [], future: [] }),
+    load: (doc) => {
+      const d = migrateDoc(doc)
+      set({ doc: { ...d, blocks: withDefaults(d.blocks) }, dirty: false, past: [], future: [] })
+    },
     newDoc: (themeId = 'clean', opts) => {
       const base = emptyDoc(themeId)
       const ui = useUI.getState()
-      const blocks = (opts?.initBlocks ?? base.blocks).map((b, i) => {
-        if (i === 0 && (b.type === 'paragraph' || b.type === 'heading')) {
-          return {
-            ...b,
-            style: {
-              ...b.style,
-              fontSize: ui.defaultFontSize || b.style.fontSize,
-              lineHeight: ui.defaultLineHeight || b.style.lineHeight,
-              fontFamily: ui.defaultFont && ui.defaultFont !== 'system' ? ui.defaultFont : b.style.fontFamily,
-            },
-          }
-        }
-        return b
-      })
+      const blocks = withDefaults(opts?.initBlocks ?? base.blocks)
       const doc: Doc = {
         ...base,
         title: opts?.title ?? base.title,
@@ -110,7 +106,7 @@ export const useDoc = create<DocState>((set, get) => {
     },
 
     setTitle: (t) => commit((d) => ({ ...d, title: t }), '修改标题'),
-    setTheme: (id) => commit((d) => ({ ...d, themeId: id }), '切换主题'),
+    setTheme: (id) => commit((d) => ({ ...d, themeId: id, blocks: withDefaults(d.blocks) }), '切换主题'),
     setArticleWidth: (w) => commit((d) => ({ ...d, articleWidth: w }), '调整版心宽度'),
     setToken: (patch) => commit((d) => ({ ...d, tokenOverride: { ...(d.tokenOverride ?? {}), ...patch } }), '修改主题样式'),
     setMeta: (patch) => commit((d) => ({ ...d, meta: { ...(d.meta ?? {}), ...patch } }), '修改文章信息'),
@@ -118,7 +114,7 @@ export const useDoc = create<DocState>((set, get) => {
     addBlock: (block, index) => commit((d) => {
       const blocks = [...d.blocks]
       blocks.splice(index ?? blocks.length, 0, block)
-      return { ...d, blocks }
+      return { ...d, blocks: withDefaults(blocks) }
     }, `插入${block.type}`),
 
     updateBlock: (id, patch) => commit((d) => ({
@@ -164,12 +160,12 @@ export const useDoc = create<DocState>((set, get) => {
       return { ...d, blocks }
     }, '移动区块'),
 
-    replaceBlocks: (blocks) => commit((d) => ({ ...d, blocks }), '替换内容'),
+    replaceBlocks: (blocks) => commit((d) => ({ ...d, blocks: withDefaults(blocks) }), '替换内容'),
 
     insertBlocks: (newBlocks, index) => commit((d) => {
       const blocks = [...d.blocks]
       blocks.splice(index ?? blocks.length, 0, ...newBlocks)
-      return { ...d, blocks }
+      return { ...d, blocks: withDefaults(blocks) }
     }, `插入${newBlocks.length}个区块`),
 
     beginTransient: () => set((s) => ({ transientBase: s.doc.blocks.map((b) => ({ ...b })) })),
@@ -238,6 +234,18 @@ export const useDoc = create<DocState>((set, get) => {
     canUndo: () => get().past.length > 0,
     canRedo: () => get().future.length > 0,
 
+    applyDefaultsToCurrent: () => {
+      const { doc } = get()
+      // 先自动快照，便于撤销
+      void docsApi.snapshot(doc, '应用默认排版前快照').catch(() => {})
+      set((state) => ({
+        doc: { ...state.doc, blocks: withDefaults(state.doc.blocks) },
+        dirty: true,
+      }))
+      const ui = useUI.getState()
+      if (ui.autosave) void get().save()
+    },
+
     save: async () => {
       const { doc } = get()
       set({ saving: true })
@@ -260,8 +268,9 @@ export const useDoc = create<DocState>((set, get) => {
 
     loadFromServer: async (id) => {
       const res = await docsApi.get(id)
+      const doc = migrateDoc(res.doc)
       useUI.getState().setCurrentDocId(id)
-      set({ doc: migrateDoc(res.doc), dirty: false, past: [], future: [] })
+      set({ doc: { ...doc, blocks: withDefaults(doc.blocks) }, dirty: false, past: [], future: [] })
     },
   }
 })

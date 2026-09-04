@@ -4,10 +4,11 @@ import {
   LayoutTemplate, Sparkles, Search, ArrowRight, Filter,
   Newspaper, Feather, GraduationCap, Gift, Users, Star, ListChecks, BookOpen,
   Wand2, Hash, Link2, Settings2, ChevronRight, Zap, TrendingUp, Calendar,
-  FileCode2, Eye, Edit3, ChevronDown,
+  FileCode2, Eye, Edit3, ChevronDown, FolderOpen,
 } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
+import { openFileManager } from '../filemgr/index.js'
 import { BrandLogo } from './BrandLogo.jsx'
 import { docsApi } from '../lib/api.js'
 import { DOC_TEMPLATES, type DocTemplate } from '../lib/docTemplates.js'
@@ -398,7 +399,7 @@ export function HomePage() {
           </section>
 
           {/* ============ 快捷入口 ============ */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <QuickAction
               gradient="linear-gradient(135deg,#FFE082,#FF9A9E)"
               icon={<Hash size={18} />} title="Markdown 模式"
@@ -416,6 +417,12 @@ export function HomePage() {
               icon={<Wand2 size={18} />} title="排版质检 / 动效 / Lottie"
               desc="一键看诊断、插动效、加 Lottie 动画"
               onClick={() => useUI.getState().openModal('tools')}
+            />
+            <QuickAction
+              gradient="linear-gradient(135deg,#C2E9FB,#A1C4FD)"
+              icon={<FolderOpen size={18} />} title="文件管理器"
+              desc="统一浏览文档 / 素材 / 片段 / 模板，回收站与批量操作"
+              onClick={() => openFileManager('all')}
             />
           </section>
 
