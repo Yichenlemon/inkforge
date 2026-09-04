@@ -573,9 +573,14 @@ function renderLottie(d: LottieData, b: Block, ctx: RenderCtx): string {
 
 function renderVideo(d: VideoData, b: Block, ctx: RenderCtx): string {
   const t = ctx.tokens
-  if (d.mode === 'official' && d.vid) {
+  // 微信官方视频：优先腾讯视频 vid（粘贴链接最稳），其次素材库 media_id
+  if (d.tencentVid) {
     return `<section data-block-id="${b.id}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
-      `<mp-common-video data-vid="${esc(d.vid)}" data-title="${esc(d.title ?? '')}"></mp-common-video></section>`
+      `<mp-common-video data-vid="${esc(d.tencentVid)}" data-title="${esc(d.title ?? '')}"></mp-common-video></section>`
+  }
+  if (d.mediaId) {
+    return `<section data-block-id="${b.id}" style="${styleOf(b.style, { 'text-align': 'center' })}">` +
+      `<mpvideo data-id="${esc(d.mediaId)}" data-title="${esc(d.title ?? '')}"></mpvideo></section>`
   }
   const poster = d.poster
     ? `<img src="${esc(d.poster)}" width="100%" data-w="1080" style="width:100%;display:block;border-radius:${px(t.radius)}"/>`
@@ -589,9 +594,10 @@ function renderVideo(d: VideoData, b: Block, ctx: RenderCtx): string {
 
 function renderAudio(d: AudioData, b: Block, ctx: RenderCtx): string {
   const t = ctx.tokens
-  if (d.mode === 'official') {
+  // 微信官方音频：素材库上传所得 media_id 才能走 <mpvoice>
+  if (d.mediaId) {
     return `<section data-block-id="${b.id}" style="${styleOf(b.style, {})}">` +
-      `<mp-common-mpaudio data-src="${esc(d.url)}" data-title="${esc(d.title ?? '')}"></mp-common-mpaudio></section>`
+      `<mpvoice data-id="${esc(d.mediaId)}" data-name="${esc(d.title ?? '')}"></mpvoice></section>`
   }
   const cover = d.cover
     ? `<img src="${esc(d.cover)}" width="64" height="64" style="width:64px;height:64px;border-radius:${px(t.radius)};display:block;flex-shrink:0"/>`
@@ -602,7 +608,7 @@ function renderAudio(d: AudioData, b: Block, ctx: RenderCtx): string {
   })}">${cover}` +
     `<span style="flex:1;min-width:0">` +
     `<span leaf style="display:block;font-size:${t.fontSize}px;color:${t.headingColor};font-weight:600">${esc(d.title ?? '音频')}</span>` +
-    (d.artist ? `<span leaf style="display:block;font-size:12px;color:${t.colorMuted};margin-top:2px">${esc(d.artist)}</span>` : '') +
+    (d.singer ? `<span leaf style="display:block;font-size:12px;color:${t.colorMuted};margin-top:2px">${esc(d.singer)}</span>` : '') +
     `<span leaf style="display:block;font-size:12px;color:${t.colorPrimary};margin-top:6px">▶ 点击播放</span>` +
     `</span></section>`
 }
