@@ -24,8 +24,10 @@ import { MarkdownDialog } from './MarkdownDialog.jsx'
 import { FindReplaceDialog } from './FindReplaceDialog.jsx'
 import { SettingsDialog } from './SettingsDialog.jsx'
 import { FileManager, openFileManager } from '../filemgr/index.js'
+import { useFileStore } from '../filemgr/useFileStore.js'
 import InsertAudioDialog from './InsertAudioDialog.jsx'
 import InsertVideoDialog from './InsertVideoDialog.jsx'
+import { MultiDocTabs } from './MultiDocTabs.jsx'
 import { StatusBar } from './StatusBar.jsx'
 import { MenuBar } from './MenuBar.jsx'
 import { HomePage } from './HomePage.jsx'
@@ -47,11 +49,11 @@ export default function App() {
   const select = useUI((s) => s.select)
   const { html, loading, stats, diagnostics, reload } = useCompiledPreview()
 
-  /* 启动时如果有上次打开的文档，直接进编辑器 */
+  /* 启动时如果有上次打开的文档，直接进编辑器（走 useFileStore，使多文档 Tab 同步） */
   useEffect(() => {
     const lastId = useUI.getState().currentDocId
     if (lastId) {
-      useDoc.getState().loadFromServer(lastId).then(() => useUI.getState().setPage('editor')).catch(() => {})
+      useFileStore.getState().openFile(lastId).then(() => useUI.getState().setPage('editor')).catch(() => {})
     }
   }, [])
 
@@ -209,6 +211,9 @@ export default function App() {
 
       {/* 首页 */}
       {page === 'home' && <HomePage />}
+
+      {/* 多文档 Tab 栏（仅编辑器页） */}
+      {page === 'editor' && <MultiDocTabs />}
 
       {/* 编辑器主体 */}
       {page === 'editor' && (
