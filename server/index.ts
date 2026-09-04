@@ -6,6 +6,7 @@ import { DATA_DIR, UPLOAD_DIR, OUT_DIR } from './db.js'
 import { errorMiddleware, ok, asyncHandler } from './lib/http.js'
 import { docsRouter } from './routes/docs.js'
 import { assetsRouter } from './routes/assets.js'
+import { filesRouter } from './routes/files.js'
 import { mediaRouter } from './routes/media.js'
 import { compileRouter } from './routes/compile.js'
 import { convertRouter } from './routes/convert.js'
@@ -50,6 +51,7 @@ app.get('/api/meta', asyncHandler(async (_req, res) => {
 /* 业务路由 */
 app.use('/api', docsRouter)
 app.use('/api', assetsRouter)
+app.use('/api', filesRouter)
 app.use('/api', mediaRouter)
 app.use('/api', compileRouter)
 app.use('/api', convertRouter)

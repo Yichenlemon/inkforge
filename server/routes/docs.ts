@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory, touchDocOpen } from '../db.js'
+import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory, touchDocOpen, duplicateDoc } from '../db.js'
 import { migrateDoc } from '../../shared/types.js'
 import { asyncHandler, ok, badRequest, notFound, str } from '../lib/http.js'
 
@@ -53,6 +53,13 @@ docsRouter.post('/docs/:id/snapshot', asyncHandler(async (req, res) => {
 docsRouter.delete('/docs/:id', asyncHandler(async (req, res) => {
   deleteDoc(req.params.id)
   return ok(res, {})
+}))
+
+/** 原子复制文档 */
+docsRouter.post('/docs/:id/duplicate', asyncHandler(async (req, res) => {
+  if (!getDocRow(req.params.id)) notFound('文档不存在')
+  const r = duplicateDoc(req.params.id)
+  return ok(res, r)
 }))
 
 docsRouter.get('/docs/:id/history', asyncHandler(async (req, res) => {
