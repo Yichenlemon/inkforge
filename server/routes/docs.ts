@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory, touchDocOpen, duplicateDoc } from '../db.js'
+import { listDocs, getDocRow, upsertDoc, deleteDoc, pushHistory, listHistory, getHistory, touchDocOpen, duplicateDoc, setDocLock } from '../db.js'
 import { migrateDoc } from '../../shared/types.js'
 import { asyncHandler, ok, badRequest, notFound, str } from '../lib/http.js'
 
@@ -53,6 +53,19 @@ docsRouter.post('/docs/:id/snapshot', asyncHandler(async (req, res) => {
 docsRouter.delete('/docs/:id', asyncHandler(async (req, res) => {
   deleteDoc(req.params.id)
   return ok(res, {})
+}))
+
+/** 文档文件锁（design §13.2.2）。冲突时返回 423 */
+docsRouter.patch('/docs/:id/lock', asyncHandler(async (req, res) => {
+  const body = (req.body ?? {}) as any
+  const result = setDocLock(req.params.id, {
+    locked: body.locked === true,
+    lockedBy: typeof body.lockedBy === 'string' ? body.lockedBy : undefined,
+  })
+  if (result.ok === false && result.conflict === true) {
+    return res.status(423).json({ ok: false, message: '文档已被其他会话锁定' })
+  }
+  return ok(res, { ok: true })
 }))
 
 /** 原子复制文档 */

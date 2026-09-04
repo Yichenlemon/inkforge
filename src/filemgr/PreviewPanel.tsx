@@ -19,6 +19,20 @@ export function PreviewPanel({ item, width, onResize }: Props) {
   const [svgSrcOpen, setSvgSrcOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  /* 资源清理（设计 §18.5）：面板关闭或卸载时撤销可能持有的 blob URL。
+     本面板当前不持有持久 iframe/blob URL——唯一的 URL.createObjectURL 在
+     SvgPreview.exportPng 中且已自行 revoke；缩略图 blob URL 由 FileManager 负责回收，
+     此处不重复释放。key={item.id} 已保证切换 item 时 PreviewBody 卸载重建。 */
+  const previewUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+      }
+    }
+  }, [])
+
   /* 拖拽左边缘改变宽度（280–600） */
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault()

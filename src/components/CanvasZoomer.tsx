@@ -56,6 +56,14 @@ export function CanvasZoomer({ html, loading }: { html: string; loading: boolean
     eyeTimer.current = window.setTimeout(() => setEye(false), 400)
   }, [])
 
+  /* 资源清理（设计 §18.5）：组件卸载时清除悬停计时器，避免对已卸载组件调用 setState；
+     鸟瞰图浮窗本身由 `{eye && ...}` 条件渲染，关闭时 iframe 即被 React 卸载。 */
+  useEffect(() => {
+    return () => {
+      if (eyeTimer.current) window.clearTimeout(eyeTimer.current)
+    }
+  }, [])
+
   /* 计算视口矩形（基于 #editor-scroll 的真实滚动指标） */
   const recomputeVp = useCallback(() => {
     const el = scrollRef.current

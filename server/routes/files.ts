@@ -38,6 +38,7 @@ filesRouter.get('/files', asyncHandler(async (req, res) => {
     maxDim: NUM(q.maxDim),
     tag: toStr(q.tag),
     used: q.used === '0' ? 0 : NUM(q.used),
+    pinned: q.pinned === '1' || q.pinned === 'true',
     limit: NUM(q.limit) ?? 200,
     offset: NUM(q.offset) ?? 0,
   })
@@ -57,17 +58,19 @@ filesRouter.patch('/files/:id', asyncHandler(async (req, res) => {
   try { body = req.body ?? {} } catch { /* ignore */ }
   const id = req.params.id
   const asset = getAsset(id)
+  const pinned = typeof body.pinned === 'boolean' ? body.pinned : undefined
   if (asset) {
     updateAssetMeta(id, {
       name: toStr(body.name) || undefined,
       tags: toTags(body.tags),
       category: toStr(body.category),
       folderId: toStr(body.folderId),
+      pinned,
     })
     return ok(res, { item: queryFiles({ id })[0] })
   }
   if (getDocRow(id)) {
-    updateDocMeta(id, { title: toStr(body.name), folderId: toStr(body.folderId) })
+    updateDocMeta(id, { title: toStr(body.name), folderId: toStr(body.folderId), pinned })
     return ok(res, { item: queryFiles({ id })[0] })
   }
   return notFound('文件不存在')
@@ -80,6 +83,15 @@ filesRouter.delete('/files/:id', asyncHandler(async (req, res) => {
   if (!kind) notFound('文件不存在')
   if (req.query.purge === '1') purgeFile(kind, id)
   else softDeleteFile(kind, id)
+  return ok(res, {})
+}))
+
+/* 还原（design §15 E）：修复前端 PATCH deletedAt:null 被忽略导致静默失败的问题 */
+filesRouter.post('/files/:id/restore', asyncHandler(async (req, res) => {
+  const id = req.params.id
+  const kind = resolveKind(id)
+  if (!kind) notFound('文件不存在')
+  restoreFile(kind, id)
   return ok(res, {})
 }))
 

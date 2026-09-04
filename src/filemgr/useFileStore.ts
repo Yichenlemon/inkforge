@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
-import { api } from '../lib/api.js'
+import { api, docsApi } from '../lib/api.js'
 import type { Block, Doc, FileItem, FileKind } from '../../shared/types.js'
 
 export type SortKey = 'recent' | 'size' | 'name' | 'updatedAt'
@@ -34,6 +34,8 @@ export interface FileState {
   loading: boolean
   managerOpen: boolean
   managerInsertMode: boolean
+  /** 预览 / 引用反查 / 去重等动作要操作的文件 id（设计 §8.1 / §8.4） */
+  inspectId: string | null
 
   openFile: (id: string, opts?: { newTab?: boolean }) => Promise<void>
   closeFile: (id: string) => void
@@ -47,7 +49,8 @@ export interface FileState {
   openManager: (facet?: Facet) => void
   closeManager: () => void
   setInsertMode: (v: boolean) => void
-  setLocked: (id: string, locked: boolean) => void
+  setLocked: (id: string, locked: boolean) => Promise<void>
+  setInspectId: (id: string | null) => void
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
@@ -62,6 +65,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   loading: false,
   managerOpen: false,
   managerInsertMode: false,
+  inspectId: null,
 
   openFile: async (id, opts) => {
     await useDoc.getState().loadFromServer(id)
@@ -99,7 +103,14 @@ export const useFileStore = create<FileState>((set, get) => ({
   refreshFacet: async (facet) => {
     set({ loading: true })
     try {
-      const res = await api.get<{ items?: any[] }>(`/files?facet=${encodeURIComponent(String(facet))}`)
+      // 后端 queryFiles 读 trash/kind/sort/pinned 参数（非 facet），这里做翻译
+      const params = new URLSearchParams()
+      params.set('limit', '500')
+      if (facet === 'trash') params.set('trash', '1')
+      else if (facet === 'recent') params.set('sort', 'recent')
+      else if (facet === 'pinned') params.set('pinned', '1')
+      else if (facet !== 'all') params.set('kind', facet)
+      const res = await api.get<{ items?: any[] }>(`/files?${params.toString()}`)
       const rows: FileItem[] = (res.items ?? []).map((r: any) => ({
         kind: r.kind,
         id: r.id,
@@ -115,7 +126,7 @@ export const useFileStore = create<FileState>((set, get) => ({
         lastOpenedAt: r.lastOpenedAt,
         status: r.status ?? 'saved',
         deletedAt: r.deletedAt,
-        pinned: r.pinned,
+        pinned: r.pinned ?? false,
         refs: r.refs,
         meta: r.meta,
       }))
@@ -129,9 +140,12 @@ export const useFileStore = create<FileState>((set, get) => ({
   openManager: (facet) => set((s) => ({ managerOpen: true, facet: facet ?? s.facet })),
   closeManager: () => set({ managerOpen: false }),
   setInsertMode: (v) => set({ managerInsertMode: v }),
-  setLocked: (id, locked) => set((s) => ({
-    openDocs: s.openDocs.map((o) => (o.id === id ? { ...o, locked } : o)),
-  })),
+  setLocked: async (id, locked) => {
+    // 前端立即生效；后端持久化（设计 §13.2.2：锁住关 app 回来仍是锁）
+    set((s) => ({ openDocs: s.openDocs.map((o) => (o.id === id ? { ...o, locked } : o)) }))
+    try { await docsApi.lock(id, { locked, lockedBy: 'local' }) } catch { /* 离线容错：前端状态已更新 */ }
+  },
+  setInspectId: (id) => set({ inspectId: id }),
 }))
 
 /** 非 hook 方式访问 store（注册表 / 命令面板等场景使用） */

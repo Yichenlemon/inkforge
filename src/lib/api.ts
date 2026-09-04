@@ -29,6 +29,16 @@ export const api = {
     if (!res.ok || json.ok === false) throw new Error(json.message ?? `上传失败 (HTTP ${res.status})`)
     return json as T
   },
+  /** 返回二进制（如导出 zip），不解析 JSON */
+  download: async (p: string, body?: any): Promise<Blob> => {
+    const res = await fetch(API + p, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    })
+    if (!res.ok) throw new Error(`导出失败 (HTTP ${res.status})`)
+    return res.blob()
+  },
 }
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +54,8 @@ export const docsApi = {
   patch: (id: string, body: any) => api.patch(`/docs/${id}`, body),
   history: (id: string) => api.get(`/docs/${id}/history`),
   historyGet: (hid: string) => api.get(`/history/${hid}`),
+  /** 文件锁持久化（设计 §13.2.2）：返回 423 表示被他人锁定 */
+  lock: (id: string, lock: { locked: boolean; lockedBy?: string }) => api.patch(`/docs/${id}/lock`, lock),
 }
 
 export const compileApi = {
@@ -154,8 +166,22 @@ export const filesApi = {
   list: (facet = 'all', q = '') => api.get(`/files?facet=${encodeURIComponent(facet)}&q=${encodeURIComponent(q)}`),
   get: (id: string) => api.get(`/files/${id}`),
   patch: (id: string, body: any) => api.patch(`/files/${id}`, body),
-  del: (id: string) => api.del(`/files/${id}`),
+  /** 删除：purge=true 物理删除，否则软删（进回收站） */
+  del: (id: string, purge = false) => api.del(`/files/${id}${purge ? '?purge=1' : ''}`),
+  /** 从回收站恢复（POST /files/:id/restore） */
+  restore: (id: string) => api.post(`/files/${id}/restore`),
   import: (file: File, meta: any = {}) => api.upload('/files/import', file, file.name),
+  importUrls: (urls: string[]) => api.post('/files/import-urls', { urls }),
+  /** 导出选中为 zip（返回 Blob） */
+  exportFiles: (ids: string[], format = 'zip') => api.download('/files/export', { ids, format }),
+  /** 去重扫描（按 sha256） */
+  dedup: () => api.post('/files/dedup'),
+  /** 全局替换素材引用（事务） */
+  replace: (oldId: string, newId: string) => api.post(`/files/${oldId}/replace`, { newId }),
+  /** 反查谁在引用（refs 表） */
+  usedIn: (id: string) => api.get(`/files/${id}/used-in`),
+  /** 缩略图（PNG） */
+  thumb: (id: string) => api.get(`/files/${id}/thumb`),
 }
 
 export const onlineApi = {

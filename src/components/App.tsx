@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import {
   PanelLeft, PanelRight, Undo2, Redo2, Save, Eye, Pencil, Code2,
   FileDown, Send, CheckCircle2, Loader2, History as HistoryIcon, Settings as SettingsIcon, FileText,
@@ -9,24 +9,29 @@ import { Canvas } from './Canvas.jsx'
 import { LeftPanel } from './LeftPanel.jsx'
 import { RightPanel } from './RightPanel.jsx'
 import { Preview, useCompiledPreview, DiagnosticsPanel } from './Preview.jsx'
-import { ExportDialog } from './ExportDialog.jsx'
-import { PublishDialog } from './PublishDialog.jsx'
-import { ImportDialog } from './ImportDialog.jsx'
-import { ToolsDialog } from './ToolsDialog.jsx'
-import { LottieDialog } from './LottieDialog.jsx'
-import { AnimEditor } from './AnimEditor.jsx'
-import { ImageEditor } from './ImageEditor.jsx'
-import { CoverDialog } from './CoverDialog.jsx'
-import { CommandPalette } from './CommandPalette.jsx'
-import { HistoryPanel } from './HistoryPanel.jsx'
+// 重型弹层按需加载（设计 §18.1 代码分割，首屏只打编辑器核心）
+const ExportDialog = lazy(() => import('./ExportDialog.jsx').then((m) => ({ default: m.ExportDialog })))
+const PublishDialog = lazy(() => import('./PublishDialog.jsx').then((m) => ({ default: m.PublishDialog })))
+const ImportDialog = lazy(() => import('./ImportDialog.jsx').then((m) => ({ default: m.ImportDialog })))
+const ToolsDialog = lazy(() => import('./ToolsDialog.jsx').then((m) => ({ default: m.ToolsDialog })))
+const LottieDialog = lazy(() => import('./LottieDialog.jsx').then((m) => ({ default: m.LottieDialog })))
+const AnimEditor = lazy(() => import('./AnimEditor.jsx').then((m) => ({ default: m.AnimEditor })))
+const ImageEditor = lazy(() => import('./ImageEditor.jsx').then((m) => ({ default: m.ImageEditor })))
+const CoverDialog = lazy(() => import('./CoverDialog.jsx').then((m) => ({ default: m.CoverDialog })))
+const CommandPalette = lazy(() => import('./CommandPalette.jsx').then((m) => ({ default: m.CommandPalette })))
+const HistoryPanel = lazy(() => import('./HistoryPanel.jsx').then((m) => ({ default: m.HistoryPanel })))
+const MarkdownDialog = lazy(() => import('./MarkdownDialog.jsx').then((m) => ({ default: m.MarkdownDialog })))
+const FindReplaceDialog = lazy(() => import('./FindReplaceDialog.jsx').then((m) => ({ default: m.FindReplaceDialog })))
+const SettingsDialog = lazy(() => import('./SettingsDialog.jsx').then((m) => ({ default: m.SettingsDialog })))
+const InsertAudioDialog = lazy(() => import('./InsertAudioDialog.jsx'))
+const InsertVideoDialog = lazy(() => import('./InsertVideoDialog.jsx'))
+
 import { BrandLogo } from './BrandLogo.jsx'
-import { MarkdownDialog } from './MarkdownDialog.jsx'
-import { FindReplaceDialog } from './FindReplaceDialog.jsx'
-import { SettingsDialog } from './SettingsDialog.jsx'
 import { FileManager, openFileManager } from '../filemgr/index.js'
 import { useFileStore } from '../filemgr/useFileStore.js'
-import InsertAudioDialog from './InsertAudioDialog.jsx'
-import InsertVideoDialog from './InsertVideoDialog.jsx'
+import UsedInModal from '../filemgr/UsedInModal.js'
+import DedupModal from '../filemgr/DedupModal.js'
+import BatchImportModal from '../filemgr/BatchImportModal.js'
 import { MultiDocTabs } from './MultiDocTabs.jsx'
 import { EditorCornerControls } from './EditorCornerControls.jsx'
 import { StatusBar } from './StatusBar.jsx'
@@ -272,23 +277,28 @@ export default function App() {
       {/* 右下角统一控件簇：文件锁 + 画布缩放器 + 命令面板（设计 §13.2） */}
       {page === 'editor' && <EditorCornerControls html={html} loading={loading} />}
 
-      {/* 弹层 */}
-      <ExportDialog diagnostics={diagnostics} stats={stats} onReload={reload} />
-      <PublishDialog />
-      <ImportDialog />
-      <ToolsDialog />
-      <LottieDialog />
-      <AnimEditor />
-      <ImageEditor />
-      <CoverDialog />
-      <CommandPalette />
-      <HistoryPanel />
-      <MarkdownDialog />
-      <FindReplaceDialog />
-      <SettingsDialog />
-      <FileManager />
-      <InsertAudioDialog />
-      <InsertVideoDialog />
+      {/* 弹层（重型弹层 React.lazy 加载，Suspense 容错） */}
+      <Suspense fallback={null}>
+        <ExportDialog diagnostics={diagnostics} stats={stats} onReload={reload} />
+        <PublishDialog />
+        <ImportDialog />
+        <ToolsDialog />
+        <LottieDialog />
+        <AnimEditor />
+        <ImageEditor />
+        <CoverDialog />
+        <CommandPalette />
+        <HistoryPanel />
+        <MarkdownDialog />
+        <FindReplaceDialog />
+        <SettingsDialog />
+        <FileManager />
+        <InsertAudioDialog />
+        <InsertVideoDialog />
+        <UsedInModal />
+        <DedupModal />
+        <BatchImportModal />
+      </Suspense>
       <ToastHost />
     </div>
   )

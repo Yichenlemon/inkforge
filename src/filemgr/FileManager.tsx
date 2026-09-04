@@ -28,6 +28,7 @@ export function FileManager() {
   const filters = useFileStore((s) => s.filters)
   const items = useFileStore((s) => s.itemsByFacet[s.facet] ?? [])
   const refreshFacet = useFileStore((s) => s.refreshFacet)
+  const inspectId = useFileStore((s) => s.inspectId)
 
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [showFilters, setShowFilters] = useState(false)
@@ -46,6 +47,13 @@ export function FileManager() {
   }, [refreshFacet])
 
   useEffect(() => { loadFacet(facet) }, [facet, loadFacet])
+
+  /* 「预览 / 引用反查」等动作把 inspectId 带进来时，自动选中并预览该文件（设计 §8.1） */
+  useEffect(() => {
+    if (!managerOpen || !inspectId) return
+    const it = items.find((i) => i.id === inspectId)
+    if (it) setPreviewItem(it)
+  }, [managerOpen, inspectId, items])
 
   /* 持久化预览宽度 */
   useEffect(() => {

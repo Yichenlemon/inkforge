@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import sharp from 'sharp'
+import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -121,6 +122,11 @@ addColumn('assets', 'height', 'INTEGER')
 addColumn('assets', 'thumbnail', 'TEXT')
 addColumn('assets', 'byteSize', 'INTEGER')
 
+// Stage O：文件锁 + 置顶（design §13.2.2 / §3 / §6）
+addColumn('docs', 'lock', 'TEXT')
+addColumn('docs', 'pinned', 'INTEGER')
+addColumn('assets', 'pinned', 'INTEGER')
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS refs (
   docId      TEXT NOT NULL,
@@ -188,14 +194,16 @@ const SORT_MAP: Record<string, string> = {
   size: 'size DESC',
   updatedAt: 'updatedAt DESC',
   lastOpenedAt: 'lastOpenedAt DESC',
+  recent: 'lastOpenedAt DESC',
 }
 
 export interface QueryFilesOpts {
   kind?: string
   q?: string
-  sort?: 'name' | 'size' | 'updatedAt' | 'lastOpenedAt'
+  sort?: 'name' | 'size' | 'updatedAt' | 'lastOpenedAt' | 'recent'
   filters?: Record<string, any>
   trash?: boolean
+  pinned?: boolean
   limit?: number
   offset?: number
   minSize?: number
@@ -230,6 +238,7 @@ export function queryFiles(opts: QueryFilesOpts = {}): any[] {
   if (opts.tag) { whereAssets.push('a.tags LIKE ?'); whereDocs.push('0=1'); params.push(`%${opts.tag}%`) }
   if (opts.used === 0) push('COALESCE(rc.c,0) = 0', 'COALESCE(rc.c,0) = 0')
   else if (opts.used && opts.used > 0) push('COALESCE(rc.c,0) >= 1', 'COALESCE(rc.c,0) >= 1')
+  if (opts.pinned) push('d.pinned = 1', 'a.pinned = 1')
 
   const wd = whereDocs.length ? `WHERE ${whereDocs.join(' AND ')}` : ''
   const wa = whereAssets.length ? `WHERE ${whereAssets.join(' AND ')}` : ''
@@ -241,7 +250,7 @@ export function queryFiles(opts: QueryFilesOpts = {}): any[] {
 WITH ref_counts AS (SELECT targetId, COUNT(*) c FROM refs GROUP BY targetId)
 SELECT d.id, 'doc' AS kind, d.title AS name, NULL AS mime,
        d.byteSize AS size, d.createdAt AS createdAt, d.updatedAt AS updatedAt,
-       d.lastOpenedAt AS lastOpenedAt, d.deletedAt AS deletedAt, NULL AS pinned,
+       d.lastOpenedAt AS lastOpenedAt, d.deletedAt AS deletedAt, d.pinned AS pinned,
        '' AS tags, d.meta AS meta, NULL AS width, NULL AS height, NULL AS thumbnail,
        NULL AS category, COALESCE(rc.c,0) AS usedCount
 FROM docs d LEFT JOIN ref_counts rc ON rc.targetId = d.id
@@ -249,7 +258,7 @@ ${wd}
 UNION ALL
 SELECT a.id, (CASE WHEN a.kind='gif' THEN 'image' ELSE a.kind END) AS kind, a.name AS name, a.mime AS mime,
        a.byteSize AS size, a.createdAt AS createdAt, a.createdAt AS updatedAt,
-       NULL AS lastOpenedAt, a.deletedAt AS deletedAt, NULL AS pinned,
+       NULL AS lastOpenedAt, a.deletedAt AS deletedAt, a.pinned AS pinned,
        a.tags AS tags, NULL AS meta, a.width AS width, a.height AS height, a.thumbnail AS thumbnail,
        a.category AS category, COALESCE(rc.c,0) AS usedCount
 FROM assets a LEFT JOIN ref_counts rc ON rc.targetId = a.id
@@ -421,26 +430,139 @@ export async function importFiles(files: { buffer: Buffer; name: string; mime: s
 /**
  * 导出选中素材为 zip。archiver 未安装时给出清晰错误（Stage A 未包含该依赖）。
  */
-export async function exportFiles(ids: string[], _format: string): Promise<Buffer> {
-  const spec = 'archiver'
-  let archiverMod: any
-  try { archiverMod = await import(spec) } catch { throw new Error('archiver 未安装，无法导出 zip 包（Stage A 未包含该依赖）') }
-  const archiver = (archiverMod.default ?? archiverMod) as any
-  const archive = archiver('zip', { zlib: { level: 9 } })
-  const chunks: Buffer[] = []
-  archive.on('data', (c: Buffer) => chunks.push(c))
-  const done = new Promise<Buffer>((resolve, reject) => {
-    archive.on('end', () => resolve(Buffer.concat(chunks)))
-    archive.on('error', reject)
-  })
-  for (const id of ids) {
-    const a = getAsset(id)
-    if (!a) continue
-    const file = path.join(UPLOAD_DIR, path.basename(a.url))
-    if (fs.existsSync(file)) archive.file(file, { name: path.basename(a.url) })
+/* CRC32 标准表实现（用于 STORE 方式 ZIP 校验） */
+const CRC_TABLE: number[] = (() => {
+  const t: number[] = []
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    t[n] = c >>> 0
   }
-  archive.finalize()
-  return done
+  return t
+})()
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+
+function dosDateTime(d: Date): { time: number; date: number } {
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()
+  return { time, date }
+}
+
+/** 依赖-free 的 ZIP 写入（STORE 方式，不压缩，仅正确拼装本地头 + 中央目录 + EOCD） */
+function buildZip(entries: { name: string; data: Buffer }[]): Buffer {
+  const enc = (s: string) => Buffer.from(s, 'utf8')
+  const localParts: Buffer[] = []
+  const centralParts: Buffer[] = []
+  const mtime = new Date()
+  const { time, date } = dosDateTime(mtime)
+  let offset = 0
+  for (const e of entries) {
+    const nameBuf = enc(e.name)
+    const crc = crc32(e.data)
+    const size = e.data.length
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0) // local file header signature
+    local.writeUInt16LE(20, 4) // version needed
+    local.writeUInt16LE(0, 6) // general purpose flag
+    local.writeUInt16LE(0, 8) // compression method = store
+    local.writeUInt16LE(time, 10)
+    local.writeUInt16LE(date, 12)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(size, 18) // compressed size
+    local.writeUInt32LE(size, 22) // uncompressed size
+    local.writeUInt16LE(nameBuf.length, 26)
+    local.writeUInt16LE(0, 28) // extra length
+    localParts.push(local, nameBuf, e.data)
+
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50, 0) // central dir signature
+    central.writeUInt16LE(20, 4) // version made by
+    central.writeUInt16LE(20, 6) // version needed
+    central.writeUInt16LE(0, 8) // flag
+    central.writeUInt16LE(0, 10) // method
+    central.writeUInt16LE(time, 12)
+    central.writeUInt16LE(date, 14)
+    central.writeUInt32LE(crc, 16)
+    central.writeUInt32LE(size, 20)
+    central.writeUInt32LE(size, 24)
+    central.writeUInt16LE(nameBuf.length, 28)
+    central.writeUInt16LE(0, 30) // extra
+    central.writeUInt16LE(0, 32) // comment
+    central.writeUInt16LE(0, 34) // disk number
+    central.writeUInt16LE(0, 36) // internal attrs
+    central.writeUInt32LE(0, 38) // external attrs
+    central.writeUInt32LE(offset, 42) // local header offset
+    centralParts.push(central, nameBuf)
+
+    offset += local.length + nameBuf.length + e.data.length
+  }
+  const localData = Buffer.concat(localParts)
+  const centralData = Buffer.concat(centralParts)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0) // EOCD signature
+  eocd.writeUInt16LE(0, 4) // disk number
+  eocd.writeUInt16LE(0, 6) // disk with cd
+  eocd.writeUInt16LE(entries.length, 8) // entries this disk
+  eocd.writeUInt16LE(entries.length, 10) // total entries
+  eocd.writeUInt32LE(centralData.length, 12) // cd size
+  eocd.writeUInt32LE(localData.length, 16) // cd offset
+  eocd.writeUInt16LE(0, 20) // comment length
+  return Buffer.concat([localData, centralData, eocd])
+}
+
+function sanitizeName(s: string): string {
+  const cleaned = s.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim()
+  return cleaned.length ? cleaned.slice(0, 120) : 'untitled'
+}
+
+/**
+ * 导出选中文件为 zip（STORE 方式，无需 archiver 依赖）。
+ * 每个 id：素材读取磁盘文件；文档写入 <标题>.json（块数据）。
+ * 保证对每一个 id 都能产出真实内容，zip 始终有效。
+ */
+export async function exportFiles(ids: string[], _format: string): Promise<Buffer> {
+  const entries: { name: string; data: Buffer }[] = []
+  const usedNames = new Set<string>()
+  for (const id of ids) {
+    let name: string | null = null
+    let data: Buffer | null = null
+    const a = getAsset(id)
+    if (a) {
+      const file = path.join(UPLOAD_DIR, path.basename(a.url))
+      if (fs.existsSync(file)) {
+        data = fs.readFileSync(file)
+        name = path.basename(a.url)
+      }
+    }
+    if (data == null) {
+      const row = getDocRow(id) as any
+      if (!row) continue
+      data = Buffer.from(String(row.data ?? '{}'), 'utf8')
+      name = `${sanitizeName(row.title ?? 'doc')}.json`
+    }
+    // 避免重名覆盖
+    let finalName = name
+    if (usedNames.has(finalName)) {
+      const dot = finalName.lastIndexOf('.')
+      const base = dot > 0 ? finalName.slice(0, dot) : finalName
+      const ext = dot > 0 ? finalName.slice(dot) : ''
+      let i = 2
+      while (usedNames.has(`${base}-${i}${ext}`)) i++
+      finalName = `${base}-${i}${ext}`
+    }
+    usedNames.add(finalName)
+    entries.push({ name: finalName, data })
+  }
+  if (!entries.length) {
+    // 至少一个目录入口，保证 zip 解压可用
+    entries.push({ name: 'empty.txt', data: Buffer.from('', 'utf8') })
+  }
+  return buildZip(entries)
 }
 
 /* ------------------------------------------------------------------ */
@@ -534,14 +656,35 @@ export function getDocRow(id: string): DocRow | undefined {
   return db.prepare('SELECT * FROM docs WHERE id = ?').get(id) as DocRow | undefined
 }
 
+/** 文档文件锁（design §13.2.2）。lock 列存储 JSON：{"locked":bool,"lockedAt":number,"lockedBy":string} */
+export function setDocLock(id: string, lock: { locked: boolean; lockedBy?: string }): { ok: boolean; conflict?: boolean } {
+  const row = getDocRow(id) as any
+  if (!row) return { ok: false }
+  let existing: any = null
+  if (row.lock) {
+    try { existing = JSON.parse(row.lock) } catch { existing = null }
+  }
+  if (lock.locked === true && existing && existing.locked === true && existing.lockedBy !== lock.lockedBy) {
+    // 已被其他会话锁定，不覆盖
+    return { ok: false, conflict: true }
+  }
+  const now = Date.now()
+  const newLock = JSON.stringify({ locked: lock.locked, lockedAt: now, lockedBy: lock.lockedBy })
+  db.prepare('UPDATE docs SET lock = @lock, updatedAt = @now WHERE id = @id').run({ lock: newLock, now, id })
+  return { ok: true }
+}
+
 export function upsertDoc(row: DocRow): void {
+  const cur = getDocRow(row.id) as any
+  const lockVal = cur?.lock ?? null
   db.prepare(`
-    INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt)
-    VALUES (@id, @title, @themeId, @data, @meta, @createdAt, @updatedAt)
+    INSERT INTO docs (id, title, themeId, data, meta, createdAt, updatedAt, lock)
+    VALUES (@id, @title, @themeId, @data, @meta, @createdAt, @updatedAt, @lock)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title, themeId = excluded.themeId, data = excluded.data,
-      meta = excluded.meta, updatedAt = excluded.updatedAt
-  `).run(row)
+      meta = excluded.meta, updatedAt = excluded.updatedAt,
+      lock = COALESCE((SELECT lock FROM docs WHERE id = excluded.id), excluded.lock)
+  `).run({ ...row, lock: lockVal })
 }
 
 export function deleteDoc(id: string): void {
@@ -549,12 +692,14 @@ export function deleteDoc(id: string): void {
   db.prepare('DELETE FROM history WHERE docId = ?').run(id)
 }
 
-export function updateDocMeta(id: string, patch: { title?: string; folderId?: string }): void {
-  const cur = getDocRow(id)
+export function updateDocMeta(id: string, patch: { title?: string; folderId?: string; pinned?: boolean }): void {
+  const cur = getDocRow(id) as any
   if (!cur) return
-  db.prepare('UPDATE docs SET title = ?, folderId = ?, updatedAt = ? WHERE id = ?').run(
+  const pinned = patch.pinned !== undefined ? (patch.pinned ? 1 : 0) : (cur.pinned ?? null)
+  db.prepare('UPDATE docs SET title = ?, folderId = ?, pinned = ?, updatedAt = ? WHERE id = ?').run(
     patch.title ?? cur.title,
-    patch.folderId !== undefined ? patch.folderId : (cur as any).folderId ?? null,
+    patch.folderId !== undefined ? patch.folderId : (cur.folderId ?? null),
+    pinned,
     Date.now(), id,
   )
 }
@@ -624,12 +769,14 @@ export function deleteAsset(id: string): AssetRow | undefined {
   return row
 }
 
-export function updateAssetMeta(id: string, patch: { name?: string; tags?: string; category?: string; license?: string; folderId?: string }): void {
-  const cur = getAsset(id)
+export function updateAssetMeta(id: string, patch: { name?: string; tags?: string; category?: string; license?: string; folderId?: string; pinned?: boolean }): void {
+  const cur = getAsset(id) as any
   if (!cur) return
-  db.prepare('UPDATE assets SET name=?, tags=?, category=?, license=?, folderId=? WHERE id=?').run(
+  const pinned = patch.pinned !== undefined ? (patch.pinned ? 1 : 0) : (cur.pinned ?? null)
+  db.prepare('UPDATE assets SET name=?, tags=?, category=?, license=?, folderId=?, pinned=? WHERE id=?').run(
     patch.name ?? cur.name, patch.tags ?? cur.tags, patch.category ?? cur.category, patch.license ?? cur.license,
-    patch.folderId !== undefined ? patch.folderId : (cur as any).folderId ?? null, id,
+    patch.folderId !== undefined ? patch.folderId : (cur.folderId ?? null),
+    pinned, id,
   )
 }
 
