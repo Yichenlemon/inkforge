@@ -134,7 +134,7 @@ filesRouter.post('/files/export', asyncHandler(async (req, res) => {
 
 /* 去重扫描 */
 filesRouter.post('/files/dedup', asyncHandler(async (_req, res) => {
-  return ok(res, { groups: dedupFiles() })
+  return ok(res, { groups: await dedupFiles() })
 }))
 
 /* 全局替换素材引用 */

@@ -7,6 +7,85 @@ import { Modal, toast, Field, Toggle, Spinner, Empty, Select } from '../lib/ui.j
 import { getDefaultAccountId } from '../lib/accountDefault.js'
 import AccountManager from './AccountManager.js'
 
+/**
+ * 把任意可能的本地资源地址规范成后端可识别的 `/uploads/...` 相对路径。
+ * - 已相对：/uploads/xxx → 原样返回
+ * - 同源绝对：https://same.host/uploads/xxx → /uploads/xxx
+ * - 外链 / data URI / 已有 media_id → 返回 null（跳过）
+ */
+function toUploadPath(url: string): string | null {
+  if (!url || typeof url !== 'string') return null
+  if (url.startsWith('/uploads/')) return url
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const u = new URL(url)
+      const sameOrigin = typeof location === 'undefined' ? true : u.origin === location.origin
+      if (sameOrigin && u.pathname.startsWith('/uploads/')) return u.pathname
+    } catch { /* 忽略非法 URL */ }
+  }
+  return null
+}
+
+/** 在富文本 HTML 里把本地图片 <img src> 替换为微信 media_id */
+function rewriteHtmlImages(html: string, map: Record<string, string>): string {
+  return html.replace(/<img\b([^>]*?)\ssrc=["']([^"']+)["']([^>]*)>/gi, (full, pre, src, post) => {
+    const p = toUploadPath(src)
+    const media = p ? map[p] : undefined
+    if (!media) return full
+    return `<img${pre} src="${media}"${post}>`
+  })
+}
+
+/**
+ * 收集当前文档里所有本地图片（image 块 data.src 以及富文本里的 <img src>），
+ * 上传到微信素材库，并把 src 改写为返回的 media_id，最后保存文档。
+ * 返回成功同步的图片数量。任何异常向上抛出，由调用方决定是否阻断发布。
+ */
+async function syncBodyImagesToWechat(accountId: string, doc: any): Promise<number> {
+  const urlSet = new Set<string>()
+  for (const b of doc?.blocks ?? []) {
+    const data = b?.data
+    if (!data) continue
+    if (b.type === 'image' && typeof data.src === 'string') {
+      const p = toUploadPath(data.src)
+      if (p) urlSet.add(p)
+    }
+    if (typeof data.html === 'string') {
+      for (const m of data.html.matchAll(/<img\b[^>]*?\ssrc=["']([^"']+)["'][^>]*>/gi)) {
+        const p = toUploadPath(m[1])
+        if (p) urlSet.add(p)
+      }
+    }
+  }
+  const urls = Array.from(urlSet)
+  if (!urls.length) return 0
+
+  const r: any = await wechatApi.uploadImages(accountId, urls)
+  const map: Record<string, string> = r?.map ?? {}
+  const mapped = Object.keys(map)
+  if (!mapped.length) return 0
+
+  const newBlocks = (doc.blocks ?? []).map((b: any) => {
+    const data = b?.data
+    if (!data) return b
+    let changed = false
+    let nextData = data
+    if (b.type === 'image' && typeof data.src === 'string') {
+      const p = toUploadPath(data.src)
+      if (p && map[p]) { nextData = { ...data, src: map[p] }; changed = true }
+    }
+    if (typeof data.html === 'string') {
+      const next = rewriteHtmlImages(data.html, map)
+      if (next !== data.html) { nextData = { ...nextData, html: next }; changed = true }
+    }
+    return changed ? { ...b, data: nextData } : b
+  })
+
+  await useDoc.getState().replaceBlocks(newBlocks)
+  await useDoc.getState().save()
+  return mapped.length
+}
+
 export function PublishDialog() {
   const open = useUI((s) => s.modals.publish)
   const close = useUI((s) => s.closeModal)
@@ -24,6 +103,7 @@ export function PublishDialog() {
   const [drafts, setDrafts] = useState<any[]>([])
   const [wxName, setWxName] = useState('')
   const [useCover, setUseCover] = useState(true)
+  const [syncImages, setSyncImages] = useState(true)
 
   const refresh = async () => {
     const r = await libraryApi.accounts()
@@ -60,12 +140,23 @@ export function PublishDialog() {
     if (useCover && !thumbMediaId) { toast('先上传封面', 'error'); return }
     setBusy('push')
     try {
+      // 发布前自动把正文本地图片同步到公众号素材库（可在下方关闭；失败不阻断发布）
+      if (syncImages && accountId) {
+        try {
+          const n = await syncBodyImagesToWechat(accountId, useDoc.getState().doc)
+          if (n > 0) toast(`已同步 ${n} 张图片到公众号素材库`, 'success')
+        } catch (e: any) {
+          toast(`正文图片同步失败，仍继续发布：${e?.message ?? '未知错误'}`, 'error')
+        }
+      }
+      // 同步后文档可能已被改写 src，重新读取最新 doc 再推送
+      const currentDoc = useDoc.getState().doc
       const r = await wechatApi.draft({
-        accountId, doc, thumbMediaId: useCover ? thumbMediaId : '',
-        title: doc.title, author: doc.meta?.author, digest: doc.meta?.digest,
-        sourceUrl: doc.meta?.sourceUrl,
-        needOpenComment: doc.meta?.needOpenComment,
-        onlyFansCanComment: doc.meta?.onlyFansCanComment,
+        accountId, doc: currentDoc, thumbMediaId: useCover ? thumbMediaId : '',
+        title: currentDoc.title, author: currentDoc.meta?.author, digest: currentDoc.meta?.digest,
+        sourceUrl: currentDoc.meta?.sourceUrl,
+        needOpenComment: currentDoc.meta?.needOpenComment,
+        onlyFansCanComment: currentDoc.meta?.onlyFansCanComment,
         stripAnimation,
       })
       toast(`已推送到草稿箱（media_id: ${r.mediaId.slice(0, 12)}…）`, 'success')
@@ -105,6 +196,8 @@ export function PublishDialog() {
               </button>
             </div>
           </Field>
+
+          <Toggle value={syncImages} onChange={setSyncImages} label="同步正文图片到公众号" />
 
           <button className="btn btn-soft w-full" disabled={!accountId || !!busy} onClick={runDiagnose}>
             {busy === 'diag' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} 连接自检

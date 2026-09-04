@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { X, Lock, FolderOpen, Copy, PanelTop } from 'lucide-react'
+import { X, Lock, FolderOpen, Copy, PanelTop, Pencil, History } from 'lucide-react'
 import { useDoc } from '../store/useDoc.js'
 import { useUI } from '../store/useUI.js'
 import { useFileStore } from '../filemgr/useFileStore.js'
 import { openFileManager } from '../filemgr/index.js'
+import { docsApi } from '../lib/api.js'
 import { toast } from '../lib/ui.js'
 
 /** 状态色：saved=灰绿 / dirty=琥珀 / saving=蓝脉冲 / error=红 */
@@ -73,6 +74,58 @@ export function MultiDocTabs() {
     setCtx(null)
   }
 
+  // 关闭 ctx.id 右侧的全部标签：保留 index ≤ 目标 index 的标签
+  const closeRight = (id: string) => {
+    const idx = openDocs.findIndex((o) => o.id === id)
+    if (idx === -1) return
+    for (let i = openDocs.length - 1; i > idx; i--) useFileStore.getState().closeFile(openDocs[i].id)
+    void switchTo(id)
+    setCtx(null)
+  }
+
+  // 复制副本：拉取原文 → 另存为新 doc(id 重新生成 + 标题加「副本」)
+  const duplicate = async (id: string) => {
+    try {
+      const res = await docsApi.get(id)
+      await docsApi.save({ ...res.doc, id: 'd_' + Date.now(), title: res.doc.title + ' 副本' })
+      setCtx(null)
+      toast('已复制副本')
+    } catch (e: any) {
+      toast(e?.message ?? '复制失败', 'error')
+    }
+  }
+
+  // 重命名：prompt 取新名称后 patch
+  const rename = async (id: string) => {
+    const cur = useFileStore.getState().openDocs.find((o) => o.id === id)?.doc.title ?? ''
+    const title = window.prompt('新名称', cur)
+    if (title === null) return
+    try {
+      await docsApi.patch(id, { title })
+      setCtx(null)
+    } catch (e: any) {
+      toast(e?.message ?? '重命名失败', 'error')
+    }
+  }
+
+  // 锁定 / 解锁：读取当前 locked 状态后切换
+  const toggleLock = async (id: string) => {
+    const locked = useFileStore.getState().openDocs.find((o) => o.id === id)?.locked ?? false
+    try {
+      await useFileStore.getState().setLocked(id, !locked)
+      setCtx(null)
+    } catch (e: any) {
+      toast(e?.message ?? '操作失败', 'error')
+    }
+  }
+
+  // 查看历史：定位当前文档并打开 history 弹窗
+  const viewHistory = (id: string) => {
+    useUI.getState().setCurrentDocId(id)
+    useUI.getState().openModal('history')
+    setCtx(null)
+  }
+
   return (
     <div className="h-9 shrink-0 bg-[#FBFCFE] border-b border-ink-line flex items-stretch px-1 z-20 select-none">
       <div className="flex-1 flex items-stretch overflow-x-auto hide-scroll">
@@ -124,6 +177,16 @@ export function MultiDocTabs() {
           style={{ left: ctx.x, top: ctx.y }}>
           <MenuItem label="关闭" icon={<X size={12} />} onClick={() => { void closeTab(ctx.id); setCtx(null) }} />
           <MenuItem label="关闭其他" icon={<Copy size={12} />} onClick={() => closeOthers(ctx.id)} />
+          <MenuItem label="关闭右侧" icon={<X size={12} />} onClick={() => closeRight(ctx.id)} />
+          <div className="h-px bg-ink-line my-1" />
+          <MenuItem label="复制副本" icon={<Copy size={12} />} onClick={() => void duplicate(ctx.id)} />
+          <MenuItem label="重命名" icon={<Pencil size={12} />} onClick={() => void rename(ctx.id)} />
+          <MenuItem
+            label={openDocs.find((o) => o.id === ctx.id)?.locked ? '解锁' : '锁定'}
+            icon={<Lock size={12} />}
+            onClick={() => void toggleLock(ctx.id)}
+          />
+          <MenuItem label="查看历史" icon={<History size={12} />} onClick={() => viewHistory(ctx.id)} />
           <div className="h-px bg-ink-line my-1" />
           <MenuItem label="在文件管理器中打开" icon={<FolderOpen size={12} />} onClick={() => { openFileManager('all'); setCtx(null) }} />
         </div>

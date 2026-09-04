@@ -592,6 +592,11 @@ function renderVideo(d: VideoData, b: Block, ctx: RenderCtx): string {
     `</section>`
 }
 
+/** 转义正文以安全放入 HTML 注释：避免连续双连字符 `--` 过早闭合注释 */
+function safeCommentText(s: string): string {
+  return (s ?? '').replace(/--+/g, '—')
+}
+
 function renderAudio(d: AudioData, b: Block, ctx: RenderCtx): string {
   const t = ctx.tokens
   // 微信官方音频：素材库上传所得 media_id 才能走 <mpvoice>
@@ -602,7 +607,12 @@ function renderAudio(d: AudioData, b: Block, ctx: RenderCtx): string {
   const cover = d.cover
     ? `<img src="${esc(d.cover)}" width="64" height="64" style="width:64px;height:64px;border-radius:${px(t.radius)};display:block;flex-shrink:0"/>`
     : `<span style="width:64px;height:64px;border-radius:${px(t.radius)};background-color:${t.colorSurface};display:block;flex-shrink:0;text-align:center;line-height:64px;color:${t.colorMuted}">♪</span>`
-  return `<section data-block-id="${b.id}" style="${styleOf(b.style, {
+  // QQ音乐 或 无 mediaId 时，HTML 无法还原播放，必须回到公众号编辑器手动插入
+  const qqLine = d.source === 'qqmusic'
+    ? `<span leaf style="display:block;font-size:12px;color:${t.colorMuted};margin-top:4px">（QQ音乐：${esc(d.songName ?? d.title)}）需回公众号后台播放</span>`
+    : ''
+  const note = `<span leaf style="display:block;font-size:12px;color:${t.colorMuted};margin-top:4px">需在公众号后台插入</span>`
+  const card = `<section data-block-id="${b.id}" style="${styleOf(b.style, {
     display: 'flex', gap: '12px', 'align-items': 'center', padding: '12px',
     'background-color': t.colorSurface, 'border-radius': px(t.radius),
   })}">${cover}` +
@@ -610,7 +620,11 @@ function renderAudio(d: AudioData, b: Block, ctx: RenderCtx): string {
     `<span leaf style="display:block;font-size:${t.fontSize}px;color:${t.headingColor};font-weight:600">${esc(d.title ?? '音频')}</span>` +
     (d.singer ? `<span leaf style="display:block;font-size:12px;color:${t.colorMuted};margin-top:2px">${esc(d.singer)}</span>` : '') +
     `<span leaf style="display:block;font-size:12px;color:${t.colorPrimary};margin-top:6px">▶ 点击播放</span>` +
+    note +
+    qqLine +
     `</span></section>`
+  const guidance = `<!-- 请在公众号编辑器「音频 → 音乐」中搜索《${safeCommentText(d.title ?? '音频')}》${d.singer ? '-' + safeCommentText(d.singer) : ''} 插入（QQ音乐无法仅凭 HTML 还原） -->`
+  return `${guidance}\n${card}`
 }
 
 async function renderQrcode(d: QrcodeData, b: Block, ctx: RenderCtx): Promise<string> {

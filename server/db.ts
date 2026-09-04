@@ -345,10 +345,114 @@ export async function getThumb(id: string): Promise<Buffer | null> {
   } catch { return null }
 }
 
-/** 找出所有 sha256 重复的素材组 */
-export function dedupFiles(): { sha256: string; ids: string[] }[] {
-  const rows = db.prepare(`SELECT sha256, GROUP_CONCAT(id) AS ids FROM assets WHERE sha256 IS NOT NULL GROUP BY sha256 HAVING COUNT(*)>1`).all() as any[]
-  return rows.map((r) => ({ sha256: r.sha256, ids: String(r.ids).split(',') }))
+/** 去重组：exact = sha256 精确重复；phash = 感知哈希近似重复 */
+export interface DedupGroup {
+  sha256: string
+  ids: string[]
+  method?: 'exact' | 'phash'
+}
+
+/** 比较两个等长 hex 哈希串的汉明距离（XOR → popcount）。长度不同视为不相似 */
+export function hamming(a: string, b: string): number {
+  if (a.length !== b.length) return Number.POSITIVE_INFINITY
+  let dist = 0
+  for (let i = 0; i < a.length; i++) {
+    const x = parseInt(a[i], 16) ^ parseInt(b[i], 16)
+    dist += (x & 1) + ((x >> 1) & 1) + ((x >> 2) & 1) + ((x >> 3) & 1)
+  }
+  return dist
+}
+
+/**
+ * 计算图片的 8×8 灰度平均哈希（aHash）：
+ * 缩放为 8×8 → 灰度 → 求平均亮度 → 每像素 1 bit（≥均值记 1）→ 64-bit bigint → hex 串。
+ * sharp 失败时返回 null（调用方跳过该素材，不抛异常）。
+ */
+async function aHash(file: string): Promise<string | null> {
+  try {
+    const { data, info } = await sharp(file)
+      .resize(8, 8, { fit: 'fill' })
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const ch = info.channels || 1
+    const px = data.length / ch
+    if (px <= 0) return null
+    const lum: number[] = new Array(px)
+    let sum = 0
+    for (let p = 0; p < px; p++) {
+      let s = 0
+      for (let c = 0; c < ch; c++) s += data[p * ch + c]
+      lum[p] = s / ch
+      sum += lum[p]
+    }
+    const mean = sum / px
+    let hash = 0n
+    for (let p = 0; p < px; p++) {
+      hash = (hash << 1n) | (lum[p] >= mean ? 1n : 0n)
+    }
+    return hash.toString(16)
+  } catch {
+    return null
+  }
+}
+
+/** 找出所有重复素材组：先按 sha256 精确分组，再对图片做感知哈希近似去重 */
+export async function dedupFiles(): Promise<DedupGroup[]> {
+  // 1. 精确重复（同一非 null sha256 且成员 >1）
+  const exactRows = db.prepare(
+    `SELECT sha256, GROUP_CONCAT(id) AS ids FROM assets WHERE sha256 IS NOT NULL GROUP BY sha256 HAVING COUNT(*)>1`,
+  ).all() as any[]
+  const exactGroups: DedupGroup[] = exactRows.map((r: any) => ({
+    sha256: r.sha256,
+    ids: String(r.ids).split(','),
+    method: 'exact',
+  }))
+  const exactIds = new Set<string>()
+  for (const g of exactGroups) for (const id of g.ids) exactIds.add(id)
+
+  // 2. 近似重复：对未进入精确组的 image/gif 计算 aHash，按汉明距离 ≤10 并查集合并
+  const imageRows = db.prepare(
+    `SELECT id, url FROM assets WHERE kind IN ('image','gif') AND deletedAt IS NULL`,
+  ).all() as any[]
+  const candidates: { id: string; hash: string }[] = []
+  for (const r of imageRows) {
+    if (exactIds.has(r.id)) continue
+    const file = path.join(UPLOAD_DIR, path.basename(r.url))
+    if (!fs.existsSync(file)) continue
+    const h = await aHash(file)
+    if (h) candidates.push({ id: r.id, hash: h })
+  }
+
+  // 并查集：任意两候选 aHash 汉明距离 ≤10 即合并
+  const parent = candidates.map((_, i) => i)
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] }
+    return i
+  }
+  const union = (a: number, b: number) => {
+    const ra = find(a); const rb = find(b)
+    if (ra !== rb) parent[ra] = rb
+  }
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (hamming(candidates[i].hash, candidates[j].hash) <= 10) union(i, j)
+    }
+  }
+  const buckets = new Map<number, string[]>()
+  for (let i = 0; i < candidates.length; i++) {
+    const root = find(i)
+    const arr = buckets.get(root)
+    if (arr) arr.push(candidates[i].id)
+    else buckets.set(root, [candidates[i].id])
+  }
+
+  const phashGroups: DedupGroup[] = []
+  for (const ids of buckets.values()) {
+    if (ids.length > 1) phashGroups.push({ sha256: '', ids, method: 'phash' })
+  }
+
+  return [...exactGroups, ...phashGroups]
 }
 
 function replaceInTree(node: any, oldId: string, newId: string, oldUrl: string, newUrl: string): any {
