@@ -20,6 +20,57 @@ import { BlockView } from './BlockViews.jsx'
 import { BLOCK_TYPE_LABEL, COMPONENTS as COMPONENT_DEFS } from '../lib/components.js'
 import { toast } from '../lib/ui.js'
 
+/** 递归查找 id 对应的 frame 块 */
+function findFrame(blocks: Block[], id: string): Block | null {
+  for (const b of blocks) {
+    if (b.id === id && b.type === 'frame') return b
+    if (b.type === 'frame' && Array.isArray((b.data as any)?.children)) {
+      const f = findFrame((b.data as any).children as Block[], id)
+      if (f) return f
+    }
+  }
+  return null
+}
+
+/** 把单个子块追加到指定 frame（任意深度） */
+function appendChildToFrame(blocks: Block[], frameId: string, child: Block): Block[] {
+  return blocks.map((b) => {
+    if (b.id === frameId && b.type === 'frame') {
+      return { ...b, data: { ...(b.data as any), children: [...(((b.data as any).children as Block[]) ?? []), child] } }
+    }
+    if (b.type === 'frame' && Array.isArray((b.data as any)?.children)) {
+      return { ...b, data: { ...(b.data as any), children: appendChildToFrame((b.data as any).children as Block[], frameId, child) } }
+    }
+    return b
+  })
+}
+
+/** 把多个子块追加到指定 frame（任意深度） */
+function appendChildrenToFrame(blocks: Block[], frameId: string, kids: Block[]): Block[] {
+  return blocks.map((b) => {
+    if (b.id === frameId && b.type === 'frame') {
+      return { ...b, data: { ...(b.data as any), children: [...(((b.data as any).children as Block[]) ?? []), ...kids] } }
+    }
+    if (b.type === 'frame' && Array.isArray((b.data as any)?.children)) {
+      return { ...b, data: { ...(b.data as any), children: appendChildrenToFrame((b.data as any).children as Block[], frameId, kids) } }
+    }
+    return b
+  })
+}
+
+/** 判断 frameId 的子树是否包含 targetId（用于避免把框拖进自己的子孙） */
+function frameSubtreeContains(blocks: Block[], frameId: string, targetId: string): boolean {
+  const f = findFrame(blocks, frameId)
+  if (!f) return false
+  const children = ((f.data as any)?.children as Block[]) ?? []
+  const rec = (bs: Block[]): boolean => bs.some((c) => {
+    if (c.id === targetId) return true
+    if (c.type === 'frame' && Array.isArray((c.data as any)?.children)) return rec((c.data as any).children as Block[])
+    return false
+  })
+  return rec(children)
+}
+
 export function Canvas() {
   const doc = useDoc((s) => s.doc)
   const moveBlock = useDoc((s) => s.moveBlock)
@@ -48,21 +99,31 @@ export function Canvas() {
     moveBlock(String(active.id), to)
   }
 
-  // —— 接受从左栏拖进来的组件/素材（HTML5 DnD）——
-  // 用 state 记录落点高亮条（top | bottom | inside）。overIdx=-1 表示末尾
-  const [dropMark, setDropMark] = useState<{ index: number; mode: 'before' | 'inside' } | null>(null)
+  // —— 接受从左栏拖进来的组件/素材 / 跨框移动（HTML5 DnD）——
+  type DropMark =
+    | { mode: 'before'; index: number }
+    | { mode: 'inside'; frameId: string }
+  const [dropMark, setDropMark] = useState<DropMark | null>(null)
   const dropMarkRef = useRef<HTMLDivElement>(null)
   const blocksRef = useRef<HTMLDivElement>(null)
+
+  const clearFrameOutline = () => {
+    blocksRef.current?.querySelectorAll<HTMLElement>('[data-frame-body]').forEach((el) => { el.style.outline = '' })
+  }
 
   const onDropFromPanel = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDropMark(null)
-    // 0) 跨区块移动：把 frame 内的子块拖到其它 frame 或画布顶层
+    clearFrameOutline()
+
+    // 0) 跨区块移动：把任意层级的子块拖到其它元素框或画布顶层
     const moveRaw = e.dataTransfer.getData('application/x-ink-blockmove')
     if (moveRaw) {
       try {
         const { blockId } = JSON.parse(moveRaw) as { blockId: string }
         const docBlocks = useDoc.getState().doc.blocks
+        const topLevelSrcIdx = docBlocks.findIndex((b) => b.id === blockId)
+        // 递归剥离被拖块
         let extracted: Block | null = null
         const strip = (bs: Block[]): Block[] => bs.flatMap((b) => {
           if (b.id === blockId) { extracted = b; return [] }
@@ -73,71 +134,84 @@ export function Canvas() {
         })
         const stripped = strip(docBlocks)
         if (!extracted) return
-        const inside = dropMark?.mode === 'inside'
-        if (inside) {
-          const target = stripped[dropMark!.index]
-          if (target?.type === 'frame') {
-            useDoc.getState().replaceBlocks(
-              stripped.map((b) => b.id === target.id
-                ? { ...b, data: { ...(b.data as any), children: [...((b.data as any).children ?? []), extracted!] } }
-                : b),
-            )
+        const moved: Block = extracted
+        // 顶层下标 → 抽取后下标（仅当源在顶层且落点在源之后时前移 1；源为嵌套块则不影响顶层下标）
+        const remap = (origIdx: number) =>
+          topLevelSrcIdx < 0 ? origIdx : (origIdx <= topLevelSrcIdx ? origIdx : origIdx - 1)
+
+        if (dropMark?.mode === 'inside') {
+          const frameId = dropMark.frameId
+          const intoSelf = moved.type === 'frame' && frameSubtreeContains(stripped, blockId, frameId)
+          if (!intoSelf && frameId && frameId !== blockId) {
+            useDoc.getState().replaceBlocks(appendChildToFrame(stripped, frameId, moved))
             toast('已移入元素框')
             return
           }
+          // 落入自身子树：退化为追加到顶层末尾
         }
-        const idx = Math.max(0, Math.min(stripped.length, dropMark?.index ?? stripped.length))
+        const origIdx = dropMark?.mode === 'before' ? dropMark.index : docBlocks.length
+        const idx = Math.max(0, Math.min(stripped.length, remap(origIdx)))
         const next = [...stripped]
-        next.splice(idx, 0, extracted)
+        next.splice(idx, 0, moved)
         useDoc.getState().replaceBlocks(next)
         toast('已移动区块')
-      } catch {}
+      } catch (err) {
+        console.error('[blockmove] 失败', err)
+        toast('移动失败，请重试')
+      }
       return
     }
+
     // 1) 组件
     const compId = e.dataTransfer.getData('application/x-ink-component')
     if (compId) {
       const def = COMPONENT_DEFS.find((d) => d.id === compId)
       if (!def) return
       const blocks = def.create({ ...getTheme(doc.themeId).tokens, ...(doc.tokenOverride ?? {}) } as any)
-      const idx = dropMark?.index ?? doc.blocks.length
-      if (dropMark?.mode === 'inside') {
-        // 把目标 frame 的 children 追加（限制只能往 frame 里塞）
-        const target = doc.blocks[idx]
-        if (target?.type === 'frame') {
-          const cur = Array.isArray(target.data?.children) ? target.data.children : []
-          useDoc.getState().updateData(target.id, { children: [...cur, ...blocks] })
-          toast(`已加入「${def.name}」到 frame`)
+      if (dropMark?.mode === 'inside' && dropMark.frameId) {
+        const f = findFrame(useDoc.getState().doc.blocks, dropMark.frameId)
+        if (f) {
+          useDoc.getState().replaceBlocks(appendChildrenToFrame(useDoc.getState().doc.blocks, dropMark.frameId, blocks))
+          toast(`已加入「${def.name}」到元素框`)
           return
         }
       }
-      // 默认在 idx 之前插入
+      const idx = dropMark?.mode === 'before' ? dropMark.index : doc.blocks.length
       useDoc.getState().insertBlocks(blocks, idx)
       toast(`已插入「${def.name}」`)
       return
     }
-    // 2) 素材
+    // 2) 素材（SVG）
     const illustration = e.dataTransfer.getData('application/x-ink-illustration')
     if (illustration) {
       try {
         const parsed = JSON.parse(illustration) as { svg: string }
         const wrapped = `<section style="text-align:center;margin:6px 0;line-height:0"><span style="display:inline-block;width:64px;height:64px;line-height:0">${parsed.svg.replace(/<svg /, '<svg width="64" height="64" ')}</span></section>`
         const block: Block = { id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), type: 'html', data: { html: wrapped }, style: { marginTop: 6, marginBottom: 6 } }
-        const idx = dropMark?.index ?? doc.blocks.length
+        if (dropMark?.mode === 'inside' && dropMark.frameId) {
+          const f = findFrame(useDoc.getState().doc.blocks, dropMark.frameId)
+          if (f) { useDoc.getState().replaceBlocks(appendChildrenToFrame(useDoc.getState().doc.blocks, dropMark.frameId, [block])); toast('已插入素材到元素框'); return }
+        }
+        const idx = dropMark?.mode === 'before' ? dropMark.index : doc.blocks.length
         useDoc.getState().insertBlocks([block], idx)
         toast('已插入素材')
-      } catch {}
+      } catch (err) { console.error('[illustration] 失败', err); toast('插入素材失败') }
       return
     }
+    // 3) 资源（图片）
     const asset = e.dataTransfer.getData('application/x-ink-asset')
     if (asset) {
       try {
         const a = JSON.parse(asset) as { url: string; name: string; width?: number; height?: number }
         const block: Block = { id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), type: 'image', data: { src: a.url, alt: a.name, naturalWidth: a.width ?? undefined, display: 'block' }, style: { marginTop: 6, marginBottom: 12 } }
-        const idx = dropMark?.index ?? doc.blocks.length
+        if (dropMark?.mode === 'inside' && dropMark.frameId) {
+          const f = findFrame(useDoc.getState().doc.blocks, dropMark.frameId)
+          if (f) { useDoc.getState().replaceBlocks(appendChildrenToFrame(useDoc.getState().doc.blocks, dropMark.frameId, [block])); toast('已插入图片到元素框'); return }
+        }
+        const idx = dropMark?.mode === 'before' ? dropMark.index : doc.blocks.length
         useDoc.getState().insertBlocks([block], idx)
         toast('已插入图片')
-      } catch {}
+      } catch (err) { console.error('[asset] 失败', err); toast('插入图片失败') }
       return
     }
   }
@@ -149,36 +223,44 @@ export function Canvas() {
     if (!relevant) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
-    // 计算 drop 在哪个 index：mouseY 与 blocksRef 内每个块的中间对比
+    clearFrameOutline()
+
+    // 1) 命中光标下最内层元素框（支持嵌套任意深度）
+    const frameEls = Array.from(blocksRef.current?.querySelectorAll<HTMLElement>('[data-frame-body]') || [])
+    const fx = e.clientX, fy = e.clientY
+    let insideFrameId: string | null = null
+    for (const el of frameEls) {
+      const r = el.getBoundingClientRect()
+      if (fy >= r.top + 6 && fy <= r.bottom - 6 && fx >= r.left && fx <= r.right) {
+        insideFrameId = el.getAttribute('data-frame-body')
+      }
+    }
+    if (insideFrameId) {
+      const el = frameEls.find((x) => x.getAttribute('data-frame-body') === insideFrameId)
+      if (el) el.style.outline = '2px dashed #2C6BED'
+      setDropMark({ mode: 'inside', frameId: insideFrameId })
+      return
+    }
+
+    // 2) 否则按顶层 block 顺序算 before 下标
     const y = e.clientY
-    const containerRect = blocksRef.current?.getBoundingClientRect()
-    if (!containerRect) return
-    // 找最接近的落点
     const blockEls = Array.from(blocksRef.current?.querySelectorAll<HTMLElement>('[data-canvas-block]') || [])
     let bestIdx = -1
-    let bestMode: 'before' | 'inside' = 'before'
     let bestDist = Infinity
     blockEls.forEach((el, i) => {
       const r = el.getBoundingClientRect()
-      const within = y >= r.top - 24 && y <= r.bottom + 24
-      if (!within) return
+      if (!(y >= r.top - 24 && y <= r.bottom + 24)) return
       const mid = r.top + r.height / 2
       const dist = Math.abs(y - mid)
-      const isFrame = el.getAttribute('data-frame') === '1'
-      const mode: 'before' | 'inside' = (isFrame && y > r.top + 18 && y < r.bottom - 18) ? 'inside' : 'before'
-      const insertIdx = mode === 'inside' ? i : (y < mid ? i : i + 1)
-      if (dist < bestDist) { bestDist = dist; bestIdx = insertIdx; bestMode = mode }
+      const insertIdx = y < mid ? i : i + 1
+      if (dist < bestDist) { bestDist = dist; bestIdx = insertIdx }
     })
-    if (bestIdx >= 0) {
-      setDropMark({ index: bestIdx, mode: bestMode })
-    } else {
-      setDropMark({ index: doc.blocks.length, mode: 'before' })
-    }
+    setDropMark(bestIdx >= 0 ? { mode: 'before', index: bestIdx } : { mode: 'before', index: doc.blocks.length })
   }
 
   const onDragLeaveFromPanel = (e: React.DragEvent<HTMLDivElement>) => {
     // 仅在离开最外层容器时清空
-    if (e.currentTarget === e.target) setDropMark(null)
+    if (e.currentTarget === e.target) { setDropMark(null); clearFrameOutline() }
   }
 
   return (
@@ -240,7 +322,7 @@ export function Canvas() {
         </DndContext>
 
         {/* 落点高亮条（蓝线 + 闪烁圆点） */}
-        {dropMark && doc.blocks.length > 0 && (
+        {dropMark && doc.blocks.length > 0 && dropMark.mode === 'before' && (
           <div
             ref={dropMarkRef}
             className="pointer-events-none relative"
@@ -250,7 +332,7 @@ export function Canvas() {
               <div className="absolute -left-[5px] -top-[3px] w-[10px] h-[10px] rounded-full bg-[#2C6BED] animate-pulse" />
               <div className="absolute -right-[5px] -top-[3px] w-[10px] h-[10px] rounded-full bg-[#2C6BED] animate-pulse" />
               <div className="absolute left-12 -top-[8px] bg-[#2C6BED] text-white text-[10.5px] px-2 py-0.5 rounded shadow whitespace-nowrap">
-                {dropMark.mode === 'inside' ? '放入元素框内' : `插入到第 ${dropMark.index + 1} 个区块位置`}
+                {`插入到第 ${dropMark.index + 1} 个区块位置`}
               </div>
             </div>
           </div>

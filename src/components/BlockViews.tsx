@@ -1024,6 +1024,15 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
   const isAbs = layout === 'absolute'
   const bodyRef = useRef<HTMLDivElement>(null)
   const [snap, setSnap] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+  const dragRef = useRef<{ move: (e: MouseEvent) => void; stop: () => void } | null>(null)
+  // 拖拽中若本组件被卸载，清理 window 监听，避免泄漏
+  useEffect(() => () => {
+    if (dragRef.current) {
+      window.removeEventListener('mousemove', dragRef.current.move)
+      window.removeEventListener('mouseup', dragRef.current.stop)
+      dragRef.current = null
+    }
+  }, [])
 
   /** 元素框手柄拖拽：缩放/旋转（框级） + 内联元素拖动（带智能吸附） */
   const beginHandle = (e: React.MouseEvent, mode: 'frame-resize:se' | 'frame-rotate' | 'inline-move', index: number) => {
@@ -1051,9 +1060,17 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
         ang = ((ang % 360) + 360) % 360
         live(block.id, { rotate: ang })
       } else if (mode === 'inline-move') {
-        let dx = Math.round(ev.clientX - startX)
-        let dy = Math.round(ev.clientY - startY)
-        const SNAP = 6
+        // 屏幕位移 → 元素框本地位移：先绕中心旋转 -θ 再除以 scale（框内坐标与屏幕坐标的逆变换）
+        const s = (data.scale ?? 1) || 1
+        const th = ((data.rotate ?? 0) * Math.PI) / 180
+        const sx = ev.clientX - startX, sy = ev.clientY - startY
+        const cos = Math.cos(-th), sin = Math.sin(-th)
+        const rx = sx * cos - sy * sin
+        const ry = sx * sin + sy * cos
+        let dx = Math.round(rx / s)
+        let dy = Math.round(ry / s)
+        // 吸附阈值按 scale 折算到本地空间，保持屏幕上约 6px 手感
+        const SNAP = Math.max(2, Math.round(6 / s))
         const frameW = body.offsetWidth, frameH = body.offsetHeight
         const targetsV = [0, frameW / 2, frameW]
         const targetsH = [0, frameH / 2, frameH]
@@ -1091,7 +1108,9 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
       if (started) end(mode === 'frame-rotate' ? '旋转元素框' : mode === 'frame-resize:se' ? '缩放元素框' : '移动元素')
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', stop)
+      dragRef.current = null
     }
+    dragRef.current = { move, stop }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', stop)
   }
@@ -1101,6 +1120,7 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
       {/* frame 本体 */}
       <div
         ref={bodyRef}
+        data-frame-body={block.id}
         className="relative"
         style={{
           display: layout === 'horizontal' ? 'flex' : 'block',
@@ -1127,7 +1147,7 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
         }}
       >
         {/* 选中态：缩放/旋转手柄 + 智能吸附参考线 */}
-        {selected && (
+        {selected && isAbs && (
           <>
             <span className="no-print" title="拖动缩放"
               onMouseDown={(e) => beginHandle(e, 'frame-resize:se', -1)}
@@ -1157,7 +1177,7 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
           <div key={ch.id} className="flex-1 min-w-[80px] group/child" style={{ flexBasis: layout === 'horizontal' ? 'auto' : '100%' }}>
             <div className="flex items-start gap-1">
               <span className="cursor-grab text-ink-text-3 active:cursor-grabbing mt-1 no-print select-none" draggable
-                onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-ink-blockmove', JSON.stringify({ blockId: ch.id, source: 'frame', frameId: block.id })); e.dataTransfer.effectAllowed = 'move' }}
+                onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-ink-blockmove', JSON.stringify({ blockId: ch.id, source: 'frame' })); e.dataTransfer.effectAllowed = 'move' }}
                 title="拖到其它元素框或画布">⠿</span>
               <div className="flex-1 min-w-0">
                 <BlockView block={ch} tokens={tokens} />
@@ -1179,7 +1199,7 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
         ))}
       </div>
 
-      {/* 选中态：元素框工具条（PowerPoint 风格：组合/拆分/变形/缩放） */}
+      {/* 选中态：元素框工具条（PowerPoint 风格：组合/拆分/缩放） */}
       {selected && (
         <div className="mt-2 rounded-lg border border-ink-line bg-white/90 p-2 space-y-1.5 no-print">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1294,6 +1314,19 @@ function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag }: {
         <button className="btn btn-ghost btn-xs px-1" onClick={onRemove} title="移除">
           <Trash2 size={10} />
         </button>
+      </div>
+      {/* 编辑态可视化预览：真正渲染图片 / SVG / 文本，而非只有输入框 */}
+      <div className="mb-1 rounded bg-black/[0.03] min-h-[20px] flex items-center justify-center overflow-hidden"
+        style={{ pointerEvents: 'none' }}>
+        {item.kind === 'image' && item.src ? (
+          <img src={item.src} alt={item.alt ?? ''} style={{ maxWidth: '100%', maxHeight: 120, display: 'block', borderRadius: 4 }} draggable={false} />
+        ) : item.kind === 'svg' && item.svg ? (
+          <div style={{ lineHeight: 0, maxWidth: '100%' }} dangerouslySetInnerHTML={{ __html: item.svg }} />
+        ) : item.kind === 'text' ? (
+          <span style={{ color: item.color ?? '#222', fontSize: 13, padding: '2px 4px' }}>{item.text}</span>
+        ) : (
+          <span className="text-ink-text-3 text-[10.5px] py-1">未设置{item.kind === 'image' ? '图片 URL' : item.kind === 'svg' ? ' SVG' : '文本'}</span>
+        )}
       </div>
       {item.kind === 'image' && (
         <input className="input input-xs" placeholder="图片 URL / 上传"
