@@ -71,6 +71,31 @@ function frameSubtreeContains(blocks: Block[], frameId: string, targetId: string
   return rec(children)
 }
 
+/**
+ * 收集需要一起移动的块 id：若目标块带 groupId，则返回同层所有同组块（按文档顺序），
+ * 使「组合」后的子块在跨框拖拽时整组迁移。
+ */
+function collectMoveIds(blocks: Block[], id: string): string[] {
+  let found: string[] | null = null
+  const walk = (arr: Block[]): boolean => {
+    const self = arr.find((b) => b.id === id)
+    if (self) {
+      found = self.groupId
+        ? arr.filter((b) => b.groupId === self.groupId).map((b) => b.id)
+        : [id]
+      return true
+    }
+    for (const b of arr) {
+      if (b.type === 'frame' && Array.isArray((b.data as any)?.children)) {
+        if (walk((b.data as any).children as Block[])) return true
+      }
+    }
+    return false
+  }
+  walk(blocks)
+  return found ?? [id]
+}
+
 export function Canvas() {
   const doc = useDoc((s) => s.doc)
   const moveBlock = useDoc((s) => s.moveBlock)
@@ -122,29 +147,35 @@ export function Canvas() {
       try {
         const { blockId } = JSON.parse(moveRaw) as { blockId: string }
         const docBlocks = useDoc.getState().doc.blocks
-        const topLevelSrcIdx = docBlocks.findIndex((b) => b.id === blockId)
+        // 组合：若被拖块属于某个组合，则整组一起移动（保持原文档顺序）
+        const moveIds = collectMoveIds(docBlocks, blockId)
+        const idSet = new Set(moveIds)
+        // 被移除的顶层块下标（空 = 源是嵌套块，不影响顶层下标）
+        const removedTopIdxs = docBlocks.map((b, i) => (idSet.has(b.id) ? i : -1)).filter((i) => i >= 0)
         // 递归剥离被拖块
-        let extracted: Block | null = null
+        const extracted: Block[] = []
         const strip = (bs: Block[]): Block[] => bs.flatMap((b) => {
-          if (b.id === blockId) { extracted = b; return [] }
+          if (idSet.has(b.id)) { extracted.push(b); return [] }
           if (b.type === 'frame' && Array.isArray((b.data as any)?.children)) {
             return [{ ...b, data: { ...(b.data as any), children: strip((b.data as any).children) } }]
           }
           return [b]
         })
         const stripped = strip(docBlocks)
-        if (!extracted) return
-        const moved: Block = extracted
-        // 顶层下标 → 抽取后下标（仅当源在顶层且落点在源之后时前移 1；源为嵌套块则不影响顶层下标）
-        const remap = (origIdx: number) =>
-          topLevelSrcIdx < 0 ? origIdx : (origIdx <= topLevelSrcIdx ? origIdx : origIdx - 1)
+        if (extracted.length === 0) return
+        // 保持组内原有相对顺序
+        extracted.sort((a, b) => moveIds.indexOf(a.id) - moveIds.indexOf(b.id))
+        // 顶层落点下标 → 抽取后下标（按被移除的顶层块数量精确折算，天然支持整组移动）
+        const remap = (origIdx: number) => origIdx - removedTopIdxs.filter((i) => i < origIdx).length
 
         if (dropMark?.mode === 'inside') {
           const frameId = dropMark.frameId
-          const intoSelf = moved.type === 'frame' && frameSubtreeContains(stripped, blockId, frameId)
-          if (!intoSelf && frameId && frameId !== blockId) {
-            useDoc.getState().replaceBlocks(appendChildToFrame(stripped, frameId, moved))
-            toast('已移入元素框')
+          const intoSelf = extracted.some((m) => m.type === 'frame' && frameSubtreeContains(stripped, m.id, frameId))
+          if (!intoSelf && frameId && !idSet.has(frameId)) {
+            let next = stripped
+            for (const m of extracted) next = appendChildToFrame(next, frameId, m)
+            useDoc.getState().replaceBlocks(next)
+            toast(moveIds.length > 1 ? `已整组移入元素框（${moveIds.length} 个）` : '已移入元素框')
             return
           }
           // 落入自身子树：退化为追加到顶层末尾
@@ -152,9 +183,9 @@ export function Canvas() {
         const origIdx = dropMark?.mode === 'before' ? dropMark.index : docBlocks.length
         const idx = Math.max(0, Math.min(stripped.length, remap(origIdx)))
         const next = [...stripped]
-        next.splice(idx, 0, moved)
+        next.splice(idx, 0, ...extracted)
         useDoc.getState().replaceBlocks(next)
-        toast('已移动区块')
+        toast(moveIds.length > 1 ? `已整组移动（${moveIds.length} 个）` : '已移动区块')
       } catch (err) {
         console.error('[blockmove] 失败', err)
         toast('移动失败，请重试')

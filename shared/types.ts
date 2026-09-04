@@ -463,9 +463,13 @@ export interface FrameData {
   borderRadius?: number
   borderWidth?: number
   padding?: number
-  /** 旋转/缩放（仅 absolute 模式下生效；非破坏性，导出 SVG 时整体 transform） */
+  /** 旋转/缩放/斜切变形（rotate 与 scale 仅 absolute 模式；skew 变形所有布局生效，导出为 CSS transform） */
   rotate?: number
   scale?: number
+  /** 变形：X 轴斜切角度（deg） */
+  skewX?: number
+  /** 变形：Y 轴斜切角度（deg） */
+  skewY?: number
 }
 
 export interface FrameInlineItem {
@@ -481,11 +485,15 @@ export interface FrameInlineItem {
   text?: string
   width?: number
   height?: number
-  /** 仅 absolute 模式：相对 frame 的偏移 / 旋转 / 缩放 */
+  /** 仅 absolute 模式：相对 frame 的偏移 / 旋转 / 缩放 / 斜切变形 */
   x?: number
   y?: number
   rotate?: number
   scale?: number
+  /** 变形：X 轴斜切角度（deg） */
+  skewX?: number
+  /** 变形：Y 轴斜切角度（deg） */
+  skewY?: number
 }
 
 export type BlockData =
@@ -514,6 +522,8 @@ export interface BlockBase {
   locked?: boolean
   /** 块级备注，不导出 */
   note?: string
+  /** 组合分组 id：相同 groupId 的区块作为一个整体一起移动（元素框内子块组合，PowerPoint 式）。不导出 */
+  groupId?: string
 }
 
 export type Block = BlockBase

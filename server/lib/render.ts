@@ -1455,22 +1455,36 @@ async function renderFrame(d: FrameData, b: Block, ctx: RenderCtx): Promise<stri
 
   const inner: string[] = []
 
+  // 内联元素的定位 + 变形样式（旋转/缩放仅自由布局，斜切所有布局）
+  const inlineStyle = (it: { x?: number; y?: number; rotate?: number; scale?: number; skewX?: number; skewY?: number }): string => {
+    const parts: string[] = []
+    if (layout === 'absolute') parts.push(`position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px`)
+    const tf: string[] = []
+    if (layout === 'absolute') tf.push(`rotate(${it.rotate ?? 0}deg)`, `scale(${it.scale ?? 1})`)
+    if (it.skewX) tf.push(`skewX(${it.skewX}deg)`)
+    if (it.skewY) tf.push(`skewY(${it.skewY}deg)`)
+    if (tf.length) parts.push(`transform:${tf.join(' ')}`)
+    return parts.length ? `${parts.join(';')};` : ''
+  }
+
   // 1) inline 子元素（图片/SVG/文本）
   if (Array.isArray(d.inline)) {
     for (const it of d.inline) {
+      const extra = inlineStyle(it)
       if (it.kind === 'image') {
         const w = it.width ? `${it.width}px` : 'auto'
-        inner.push(`<img src="${esc(it.src || '')}" alt="${esc(it.alt || '')}" style="display:inline-block;width:${w};max-width:100%;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">`)
+        const h = it.height ? `height:${it.height}px;` : ''
+        inner.push(`<img src="${esc(it.src || '')}" alt="${esc(it.alt || '')}" style="display:inline-block;width:${w};${h}max-width:100%;${extra}">`)
       } else if (it.kind === 'svg') {
         const svgInline = (it.svg || '').replace(/<\?xml[^>]*\?>/g, '').replace(/<!DOCTYPE[^>]*>/g, '')
-        inner.push(`<span style="display:inline-block;line-height:0;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">${svgInline}</span>`)
+        inner.push(`<span style="display:inline-block;line-height:0;${extra}">${svgInline}</span>`)
       } else if (it.kind === 'text') {
-        inner.push(`<span style="display:inline-block;${layout === 'absolute' ? `position:absolute;left:${it.x ?? 0}px;top:${it.y ?? 0}px;transform:rotate(${it.rotate ?? 0}deg) scale(${it.scale ?? 1});` : ''}">${esc(it.text || '')}</span>`)
+        inner.push(`<span style="display:inline-block;${extra}">${esc(it.text || '')}</span>`)
       }
     }
   }
 
-  // 2) 子区块（递归 render）
+  // 2) 子区块（递归 render；groupId 仅为编辑态组合元数据，不影响导出）
   if (Array.isArray(d.children)) {
     for (const ch of d.children) {
       const segCtx = { ...ctx, depth: (ctx.depth ?? 0) + 1 }
@@ -1478,10 +1492,12 @@ async function renderFrame(d: FrameData, b: Block, ctx: RenderCtx): Promise<stri
     }
   }
 
-  // absolute 模式下整体旋转/缩放
-  const outerTransform = layout === 'absolute'
-    ? `transform:rotate(${d.rotate ?? 0}deg) scale(${d.scale ?? 1});transform-origin:center;`
-    : ''
+  // 旋转/缩放（自由布局） + 斜切变形（所有布局）
+  const outerTf: string[] = []
+  if (layout === 'absolute') outerTf.push(`rotate(${d.rotate ?? 0}deg)`, `scale(${d.scale ?? 1})`)
+  if (d.skewX) outerTf.push(`skewX(${d.skewX}deg)`)
+  if (d.skewY) outerTf.push(`skewY(${d.skewY}deg)`)
+  const outerTransform = outerTf.length ? `transform:${outerTf.join(' ')};transform-origin:center;` : ''
 
   return `<section data-block-id="${blockId}" style="${styleOf(b.style, containerStyle)}${outerTransform}">${inner.join('')}</section>`
 }

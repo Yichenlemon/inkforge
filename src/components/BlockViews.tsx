@@ -1024,6 +1024,10 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
   const isAbs = layout === 'absolute'
   const bodyRef = useRef<HTMLDivElement>(null)
   const [snap, setSnap] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+  /** 流式布局（横排/纵排）下内联元素拖拽排序的落点索引 */
+  const [dropIdx, setDropIdx] = useState<number | null>(null)
+  /** 子块多选（用于组合/拆分） */
+  const [selKids, setSelKids] = useState<string[]>([])
   const dragRef = useRef<{ move: (e: MouseEvent) => void; stop: () => void } | null>(null)
   // 拖拽中若本组件被卸载，清理 window 监听，避免泄漏
   useEffect(() => () => {
@@ -1034,20 +1038,70 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
     }
   }, [])
 
-  /** 元素框手柄拖拽：缩放/旋转（框级） + 内联元素拖动（带智能吸附） */
-  const beginHandle = (e: React.MouseEvent, mode: 'frame-resize:se' | 'frame-rotate' | 'inline-move', index: number) => {
-    if (!isAbs && mode !== 'frame-resize:se') return
+  const toggleKid = (id: string) =>
+    setSelKids((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const moveKid = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= children.length) return
+    const arr = [...children]
+    const [m] = arr.splice(i, 1)
+    arr.splice(j, 0, m)
+    up({ children: arr })
+  }
+
+  type HandleMode =
+    | 'frame-resize:se' | 'frame-rotate'
+    | 'inline-move' | 'inline-resize' | 'inline-rotate' | 'inline-reorder'
+
+  /**
+   * 元素框手柄拖拽：
+   * - frame-resize:se / frame-rotate：框级缩放、旋转（仅自由布局）
+   * - inline-move：自由布局内联元素拖动（带智能吸附）
+   * - inline-resize / inline-rotate：内联元素（图片/SVG/文本）画布上直接缩放、旋转
+   * - inline-reorder：流式布局（横排/纵排）内联元素拖拽排序
+   */
+  const beginHandle = (e: React.MouseEvent, mode: HandleMode, index: number) => {
+    if ((mode === 'frame-rotate' || mode === 'frame-resize:se') && !isAbs) return
+    if (mode === 'inline-reorder' && isAbs) return
     e.preventDefault(); e.stopPropagation()
     const body = bodyRef.current; if (!body) return
     const startX = e.clientX, startY = e.clientY
     const item = inline[index]
     const startItemX = item?.x ?? 0, startItemY = item?.y ?? 0
+    const startItemW = item?.width ?? (item?.kind === 'text' ? 60 : 80)
+    const startItemH = item?.height ?? 24
     const group = item?.groupId
     const groupItems = group ? inline.filter((it) => it.groupId === group) : null
     const startW = data.width && data.width !== 'auto' ? Number(data.width) : body.offsetWidth
     const startH = data.height && data.height !== 'auto' ? Number(data.height) : body.offsetHeight
     let started = false
+    let reorderTarget: number | null = null
+
+    /** 屏幕位移 → 框内本地位移：先绕中心旋转 -θ 再除以 scale */
+    const localDelta = (ev: MouseEvent) => {
+      const s = (data.scale ?? 1) || 1
+      const th = ((data.rotate ?? 0) * Math.PI) / 180
+      const sx = ev.clientX - startX, sy = ev.clientY - startY
+      const cos = Math.cos(-th), sin = Math.sin(-th)
+      return { dx: (sx * cos - sy * sin) / s, dy: (sx * sin + sy * cos) / s, s }
+    }
+
     const move = (ev: MouseEvent) => {
+      if (mode === 'inline-reorder') {
+        // 流式布局：按指针位置计算落点索引并绘制参考线
+        const els = Array.from(body.querySelectorAll<HTMLElement>('[data-inline-id]'))
+        const horiz = layout === 'horizontal'
+        const pos = horiz ? ev.clientX : ev.clientY
+        let target = els.length
+        for (let i = 0; i < els.length; i++) {
+          const r = els[i].getBoundingClientRect()
+          const mid = horiz ? r.left + r.width / 2 : r.top + r.height / 2
+          if (pos < mid) { target = i; break }
+        }
+        reorderTarget = target
+        setDropIdx(target)
+        return
+      }
       if (!started) { started = true; begin() }
       if (mode === 'frame-resize:se') {
         const w = Math.max(40, Math.round(startW + (ev.clientX - startX)))
@@ -1060,15 +1114,8 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
         ang = ((ang % 360) + 360) % 360
         live(block.id, { rotate: ang })
       } else if (mode === 'inline-move') {
-        // 屏幕位移 → 元素框本地位移：先绕中心旋转 -θ 再除以 scale（框内坐标与屏幕坐标的逆变换）
-        const s = (data.scale ?? 1) || 1
-        const th = ((data.rotate ?? 0) * Math.PI) / 180
-        const sx = ev.clientX - startX, sy = ev.clientY - startY
-        const cos = Math.cos(-th), sin = Math.sin(-th)
-        const rx = sx * cos - sy * sin
-        const ry = sx * sin + sy * cos
-        let dx = Math.round(rx / s)
-        let dy = Math.round(ry / s)
+        const { dx, dy, s } = localDelta(ev)
+        let ddx = Math.round(dx), ddy = Math.round(dy)
         // 吸附阈值按 scale 折算到本地空间，保持屏幕上约 6px 手感
         const SNAP = Math.max(2, Math.round(6 / s))
         const frameW = body.offsetWidth, frameH = body.offsetHeight
@@ -1083,17 +1130,17 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
           targetsH.push(t, t + h / 2, t + h)
         }
         const iw = item?.width ?? 80, ih = item?.height ?? 24
-        const candV = [startItemX + dx, startItemX + dx + iw / 2, startItemX + dx + iw]
-        const candH = [startItemY + dy, startItemY + dy + ih / 2, startItemY + dy + ih]
+        const candV = [startItemX + ddx, startItemX + ddx + iw / 2, startItemX + ddx + iw]
+        const candH = [startItemY + ddy, startItemY + ddy + ih / 2, startItemY + ddy + ih]
         let bestV: { d: number; delta: number; pos: number } | null = null
         let bestH: { d: number; delta: number; pos: number } | null = null
         for (const t of targetsV) for (const s of candV) { const d = Math.abs(s - t); if (d <= SNAP && (!bestV || d < bestV.d)) bestV = { d, delta: t - s, pos: t } }
         for (const t of targetsH) for (const s of candH) { const d = Math.abs(s - t); if (d <= SNAP && (!bestH || d < bestH.d)) bestH = { d, delta: t - s, pos: t } }
         const vLines: number[] = [], hLines: number[] = []
-        if (bestV) { dx += bestV.delta; vLines.push(bestV.pos) }
-        if (bestH) { dy += bestH.delta; hLines.push(bestH.pos) }
+        if (bestV) { ddx += bestV.delta; vLines.push(bestV.pos) }
+        if (bestH) { ddy += bestH.delta; hLines.push(bestH.pos) }
         setSnap({ v: vLines, h: hLines })
-        const nx = startItemX + dx, ny = startItemY + dy
+        const nx = startItemX + ddx, ny = startItemY + ddy
         if (group && groupItems) {
           const deltaX = nx - startItemX, deltaY = ny - startItemY
           const ids = new Set(groupItems.map((g) => g.id))
@@ -1101,11 +1148,42 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
         } else {
           live(block.id, { inline: inline.map((it, idx) => idx === index ? { ...it, x: nx, y: ny } : it) })
         }
+      } else if (mode === 'inline-resize') {
+        const { dx, dy } = localDelta(ev)
+        const w = Math.max(16, Math.round(startItemW + dx))
+        const h = Math.max(16, Math.round(startItemH + dy))
+        live(block.id, {
+          inline: inline.map((it, idx) => idx === index
+            ? (it.kind === 'text' ? { ...it, width: w } : { ...it, width: w, height: h })
+            : it),
+        })
+      } else if (mode === 'inline-rotate') {
+        const els = Array.from(body.querySelectorAll<HTMLElement>('[data-inline-id]'))
+        const el = els.find((x) => x.getAttribute('data-inline-id') === item?.id)
+        const r = el?.getBoundingClientRect()
+        if (!r) return
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+        let ang = Math.round(Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI) + 90
+        ang = ((ang % 360) + 360) % 360
+        live(block.id, { inline: inline.map((it, idx) => idx === index ? { ...it, rotate: ang } : it) })
       }
     }
     const stop = () => {
       setSnap({ v: [], h: [] })
-      if (started) end(mode === 'frame-rotate' ? '旋转元素框' : mode === 'frame-resize:se' ? '缩放元素框' : '移动元素')
+      setDropIdx(null)
+      if (mode === 'inline-reorder' && reorderTarget != null) {
+        const arr = [...inline]
+        const [m] = arr.splice(index, 1)
+        const insertAt = reorderTarget > index ? reorderTarget - 1 : reorderTarget
+        arr.splice(Math.max(0, Math.min(arr.length, insertAt)), 0, m)
+        up({ inline: arr })
+      } else if (started) {
+        end(mode === 'frame-rotate' ? '旋转元素框'
+          : mode === 'frame-resize:se' ? '缩放元素框'
+          : mode === 'inline-resize' ? '缩放元素'
+          : mode === 'inline-rotate' ? '旋转元素'
+          : '移动元素')
+      }
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', stop)
       dragRef.current = null
@@ -1142,8 +1220,8 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
             : undefined,
           position: 'relative',
           boxSizing: 'border-box',
-          transform: layout === 'absolute' ? `rotate(${data.rotate ?? 0}deg) scale(${data.scale ?? 1})` : undefined,
-          transformOrigin: layout === 'absolute' ? 'center' : undefined,
+          transform: `rotate(${isAbs ? data.rotate ?? 0 : 0}deg) scale(${isAbs ? data.scale ?? 1 : 1}) skewX(${data.skewX ?? 0}deg) skewY(${data.skewY ?? 0}deg)`,
+          transformOrigin: 'center',
         }}
       >
         {/* 选中态：缩放/旋转手柄 + 智能吸附参考线 */}
@@ -1173,14 +1251,28 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
             空元素框 · 在左侧组件库拖入 / 点击右侧插入新子区块
           </div>
         )}
-        {children.map((ch, i) => (
-          <div key={ch.id} className="flex-1 min-w-[80px] group/child" style={{ flexBasis: layout === 'horizontal' ? 'auto' : '100%' }}>
+        {children.map((ch, i) => {
+          const kidSel = selKids.includes(ch.id)
+          return (
+          <div key={ch.id} className="flex-1 min-w-[80px] group/child"
+            style={{ flexBasis: layout === 'horizontal' ? 'auto' : '100%', outline: kidSel ? '2px solid #2C6BED' : undefined, borderRadius: 6 }}>
             <div className="flex items-start gap-1">
               <span className="cursor-grab text-ink-text-3 active:cursor-grabbing mt-1 no-print select-none" draggable
                 onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-ink-blockmove', JSON.stringify({ blockId: ch.id, source: 'frame' })); e.dataTransfer.effectAllowed = 'move' }}
-                title="拖到其它元素框或画布">⠿</span>
+                title="拖到其它元素框或画布（已组合则整组一起移动）">⠿</span>
+              <button className="btn btn-ghost btn-xs px-0.5 no-print" title="选中（可多选后组合）"
+                onClick={(e) => { e.stopPropagation(); toggleKid(ch.id) }}>
+                {kidSel ? '☑' : '☐'}
+              </button>
               <div className="flex-1 min-w-0">
+                {ch.groupId && <span className="chip bg-[#2C6BED]/10 text-[#2C6BED] no-print" title="已组合">组</span>}
                 <BlockView block={ch} tokens={tokens} />
+              </div>
+              <div className="flex flex-col no-print">
+                <button className="btn btn-ghost btn-xs px-0.5" title="上移" disabled={i === 0}
+                  onClick={() => moveKid(i, -1)}><ArrowUp size={10} /></button>
+                <button className="btn btn-ghost btn-xs px-0.5" title="下移" disabled={i === children.length - 1}
+                  onClick={() => moveKid(i, 1)}><ArrowDown size={10} /></button>
               </div>
             </div>
             <button className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-0.5"
@@ -1188,18 +1280,30 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
               <Trash2 size={10} /> 移除此子块
             </button>
           </div>
-        ))}
-        {/* inline 子元素（图片/SVG/文本，可拖动定位） */}
+          )
+        })}
+        {/* inline 子元素（图片/SVG/文本）：自由布局拖动定位，流式布局拖动排序 */}
         {inline.map((it, i) => (
-          <FrameInlineEl key={it.id} item={it} layout={layout}
-            onChange={(patch) => setInline(i, patch)}
-            onRemove={() => up({ inline: inline.filter((_, idx) => idx !== i) })}
-            onStartDrag={isAbs ? (e) => beginHandle(e, 'inline-move', i) : undefined}
-          />
+          <React.Fragment key={it.id}>
+            {dropIdx === i && <DropGuide verticalBar={layout === 'horizontal'} />}
+            <FrameInlineEl item={it} layout={layout}
+              onChange={(patch) => setInline(i, patch)}
+              onRemove={() => up({ inline: inline.filter((_, idx) => idx !== i) })}
+              onStartDrag={
+                isAbs
+                  ? (e) => beginHandle(e, 'inline-move', i)
+                  : (e) => beginHandle(e, 'inline-reorder', i)
+              }
+              onStartResize={(e) => beginHandle(e, 'inline-resize', i)}
+              onStartRotate={(e) => beginHandle(e, 'inline-rotate', i)}
+              showHandles={selected}
+            />
+          </React.Fragment>
         ))}
+        {dropIdx === inline.length && <DropGuide verticalBar={layout === 'horizontal'} />}
       </div>
 
-      {/* 选中态：元素框工具条（PowerPoint 风格：组合/拆分/缩放） */}
+      {/* 选中态：元素框工具条（PowerPoint 风格：组合/拆分/缩放/变形） */}
       {selected && (
         <div className="mt-2 rounded-lg border border-ink-line bg-white/90 p-2 space-y-1.5 no-print">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1219,13 +1323,39 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
               <input className="input input-xs w-12" type="number" step="0.1" value={data.scale ?? 1}
                 onChange={(e) => up({ scale: Number(e.target.value) })} />
             </>)}
-            <button className="btn btn-ghost btn-xs" onClick={() => up({ width: 'auto', height: 'auto', rotate: 0, scale: 1 })} title="重置尺寸/角度/比例">归位</button>
+            <button className="btn btn-ghost btn-xs" onClick={() => up({ width: 'auto', height: 'auto', rotate: 0, scale: 1, skewX: 0, skewY: 0 })} title="重置尺寸/角度/比例/变形">归位</button>
           </div>
+          {/* 变形：斜切（所有布局生效，导出为 CSS transform） */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-ink-text-3 text-[10.5px]">变形</span>
+            <label className="text-ink-text-3 text-[10.5px]">斜切 X</label>
+            <input className="input input-xs w-12" type="number" value={data.skewX ?? 0}
+              onChange={(e) => up({ skewX: Number(e.target.value) || 0 })} />
+            <label className="text-ink-text-3 text-[10.5px]">斜切 Y</label>
+            <input className="input input-xs w-12" type="number" value={data.skewY ?? 0}
+              onChange={(e) => up({ skewY: Number(e.target.value) || 0 })} />
+            <button className="btn btn-ghost btn-xs" onClick={() => up({ skewX: 0, skewY: 0 })} title="重置变形">重置变形</button>
+          </div>
+          {/* 内联元素组合/拆分 */}
           {inline.length > 1 && (
             <div className="flex items-center gap-1.5">
+              <span className="text-ink-text-3 text-[10.5px]">内联元素</span>
               <button className="btn btn-soft btn-xs" onClick={() => { const g = 'g_' + Date.now().toString(36); up({ inline: inline.map((it) => ({ ...it, groupId: g })) }) }}>组合全部</button>
               <button className="btn btn-soft btn-xs" onClick={() => up({ inline: inline.map((it) => ({ ...it, groupId: undefined })) })}>拆分</button>
               <span className="text-ink-text-3 text-[10.5px]">{inline.filter((it) => it.groupId).length} 个已组合</span>
+            </div>
+          )}
+          {/* 子块组合/拆分：多选后组合，拖动时整组一起移动 */}
+          {children.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-ink-text-3 text-[10.5px]">子块</span>
+              <span className="text-ink-text-3 text-[10.5px]">已选 {selKids.length}</span>
+              <button className="btn btn-soft btn-xs" disabled={selKids.length < 2}
+                onClick={() => { const g = 'g_' + Date.now().toString(36); up({ children: children.map((c) => selKids.includes(c.id) ? { ...c, groupId: g } : c) }) }}>组合选中</button>
+              <button className="btn btn-soft btn-xs" disabled={selKids.length === 0}
+                onClick={() => up({ children: children.map((c) => selKids.includes(c.id) ? { ...c, groupId: undefined } : c) })}>拆分选中</button>
+              <button className="btn btn-ghost btn-xs" onClick={() => setSelKids([])}>清空选择</button>
+              <span className="text-ink-text-3 text-[10.5px]">{children.filter((c) => c.groupId).length} 个已组合</span>
             </div>
           )}
         </div>
@@ -1281,25 +1411,39 @@ export function FrameView({ block, data, tokens }: BlockViewProps<FrameData>) {
   )
 }
 
-/** inline 子元素控件：可输入 src/文字，并在 layout=absolute 时显示坐标输入 */
-function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag }: {
+/** 流式布局（横排/纵排）下内联元素拖拽排序的落点参考线 */
+function DropGuide({ verticalBar }: { verticalBar: boolean }) {
+  return (
+    <span className="no-print" style={verticalBar
+      ? { width: 2, alignSelf: 'stretch', background: '#2C6BED', borderRadius: 1 }
+      : { flexBasis: '100%', height: 2, background: '#2C6BED', borderRadius: 1 }} />
+  )
+}
+
+/** inline 子元素控件：可视化渲染 + 输入 src/文字 + 变形，并支持画布上手柄缩放/旋转/拖动 */
+function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag, onStartResize, onStartRotate, showHandles }: {
   item: FrameInlineItem
   layout: 'horizontal' | 'vertical' | 'absolute'
   onChange: (patch: Partial<FrameInlineItem>) => void
   onRemove: () => void
   onStartDrag?: (e: React.MouseEvent) => void
+  onStartResize?: (e: React.MouseEvent) => void
+  onStartRotate?: (e: React.MouseEvent) => void
+  showHandles?: boolean
 }) {
   const abs = layout === 'absolute'
   return (
     <div
+      data-inline-id={item.id}
       className="bg-white/70 border border-ink-line rounded p-1.5 text-[11px] flex flex-col gap-1 relative"
       style={{
         position: abs ? 'absolute' : 'relative',
         left: abs ? `${item.x ?? 0}px` : undefined,
         top: abs ? `${item.y ?? 0}px` : undefined,
-        transform: abs ? `rotate(${item.rotate ?? 0}deg) scale(${item.scale ?? 1})` : undefined,
-        transformOrigin: abs ? 'center' : undefined,
+        transform: `rotate(${item.rotate ?? 0}deg) scale(${item.scale ?? 1}) skewX(${item.skewX ?? 0}deg) skewY(${item.skewY ?? 0}deg)`,
+        transformOrigin: 'center',
         width: item.width ? `${item.width}px` : undefined,
+        height: item.kind !== 'text' && item.height ? `${item.height}px` : undefined,
         maxWidth: '100%',
       }}
     >
@@ -1340,10 +1484,15 @@ function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag }: {
         <input className="input input-xs" placeholder="文本"
           value={item.text || ''} onChange={(e) => onChange({ text: e.target.value })} />
       )}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-wrap">
         <label className="text-ink-text-3">宽</label>
         <input type="number" className="input input-xs w-12" value={item.width ?? ''}
           onChange={(e) => onChange({ width: e.target.value ? Number(e.target.value) : undefined })} />
+        {item.kind !== 'text' && (<>
+          <label className="text-ink-text-3">高</label>
+          <input type="number" className="input input-xs w-12" value={item.height ?? ''}
+            onChange={(e) => onChange({ height: e.target.value ? Number(e.target.value) : undefined })} />
+        </>)}
         {abs && (
           <>
             <label className="text-ink-text-3">X</label>
@@ -1360,7 +1509,26 @@ function FrameInlineEl({ item, layout, onChange, onRemove, onStartDrag }: {
               onChange={(e) => onChange({ scale: Number(e.target.value) })} />
           </>
         )}
+        <label className="text-ink-text-3">斜切X</label>
+        <input type="number" className="input input-xs w-12" value={item.skewX ?? 0}
+          onChange={(e) => onChange({ skewX: Number(e.target.value) || 0 })} />
+        <label className="text-ink-text-3">斜切Y</label>
+        <input type="number" className="input input-xs w-12" value={item.skewY ?? 0}
+          onChange={(e) => onChange({ skewY: Number(e.target.value) || 0 })} />
       </div>
+      {/* 画布上手柄：图片/SVG/文本同样支持直接拖动缩放与旋转 */}
+      {showHandles && (
+        <>
+          <span className="no-print" title="拖动缩放"
+            onMouseDown={(e) => { e.stopPropagation(); onStartResize?.(e) }}
+            style={{ position: 'absolute', right: -6, bottom: -6, width: 12, height: 12, borderRadius: 3, background: '#2C6BED', cursor: 'nwse-resize', boxShadow: '0 0 0 2px #fff', zIndex: 7 }} />
+          <span className="no-print" title="拖动旋转"
+            onMouseDown={(e) => { e.stopPropagation(); onStartRotate?.(e) }}
+            style={{ position: 'absolute', left: '50%', top: -16, transform: 'translateX(-50%)', width: 14, height: 14, borderRadius: '50%', background: '#fff', border: '2px solid #2C6BED', cursor: 'grab', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2C6BED', zIndex: 7 }}>
+            <Maximize2 size={9} />
+          </span>
+        </>
+      )}
     </div>
   )
 }
