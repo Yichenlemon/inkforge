@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InkForge · 面向微信公众号的开源可视化编辑器</title>
+<meta name="description" content="InkForge 是面向微信公众号的开源可视化编辑器：25 种内容区块、109 个组件、50 个 SVG 交互组件、17 套文档模板，导出自动做微信合规校验，数据全部留在本地，可私有化部署。" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<!-- ============ 导航 ============ -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#bg)"/>
+        <path d="M9 22c3.2-1.6 5-4.4 5.4-8.2.3-2.6 1.3-4.6 3-6.1-3.4 1.4-5.4 3.9-6 7.4-.5 3 .4 5.3 2.6 6.9z" fill="#fff"/>
+        <path d="M17.5 23.5c2.4-1.2 3.8-3.3 4.1-6.2.2-2 .9-3.4 2.1-4.5-2.5 1.1-4 2.9-4.5 5.6-.3 2.3.3 4 1.8 5.1z" fill="#fff" opacity=".75"/>
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#0F1B3D"/><stop offset=".55" stop-color="#2C6BED"/><stop offset="1" stop-color="#6E8EFB"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="brand-text">InkForge</span>
+    </a>
+
+    <nav class="nav-links" id="navLinks">
+      <a href="#features">特性</a>
+      <a href="#interactive">交互</a>
+      <a href="#compliance">微信合规</a>
+      <a href="#start">快速开始</a>
+      <a href="#stack">技术栈</a>
+    </nav>
+
+    <div class="nav-actions">
+      <a class="btn btn-ghost" href="https://github.com/Yichenlemon/inkforge" target="_blank" rel="noopener">源码</a>
+      <a class="btn btn-primary" href="https://github.com/Yichenlemon/inkforge/releases/latest" target="_blank" rel="noopener">下载</a>
+    </div>
+
+    <button class="nav-toggle" id="navToggle" aria-label="菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<!-- ============ Hero ============ -->
+<section class="hero" id="top">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="wrap hero-inner">
+    <div class="hero-copy">
+      <span class="pill">开源 · 可私有化部署</span>
+      <h1>让排版不再是<br /><span class="grad">灵感的拦路虎</span></h1>
+      <p class="lede">
+        面向微信公众号的可视化编辑器。<b>25 种内容区块</b>、<b>109 个组件</b>、
+        <b>50 个 SVG 交互组件</b>、<b>17 套文档模板</b>——
+        导出时自动做微信平台合规校验，素材与文档全部留在你自己的机器上。
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-light btn-lg" href="https://github.com/Yichenlemon/inkforge/releases/download/v1.3.0/inkforge-1.3.0.zip" target="_blank" rel="noopener">
+          下载 v1.3.0 · 便携包
+        </a>
+        <a class="btn btn-outline btn-lg" href="https://github.com/Yichenlemon/inkforge" target="_blank" rel="noopener">
+          在 GitHub 查看
+        </a>
+      </div>
+      <p class="hero-note">162 MB 单文件压缩包，内置运行时，无需安装 Node.js · 当前开发版本 1.4.0</p>
+    </div>
+
+    <div class="hero-visual" aria-hidden="true">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>inkforge</span></div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <span class="m-item on"></span><span class="m-item"></span><span class="m-item"></span>
+            <span class="m-item"></span><span class="m-item"></span><span class="m-item"></span>
+          </div>
+          <div class="mock-main">
+            <div class="m-block w70 h-title"></div>
+            <div class="m-block w100"></div>
+            <div class="m-block w90"></div>
+            <div class="m-card"></div>
+            <div class="m-block w60"></div>
+            <div class="m-grid"><span></span><span></span><span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 数据条 ============ -->
+<section class="stats">
+  <div class="wrap stats-grid">
+    <div class="stat"><b>25</b><span>种内容区块</span></div>
+    <div class="stat"><b>109</b><span>个组件 · 12 类</span></div>
+    <div class="stat"><b>50</b><span>个 SVG 交互组件</span></div>
+    <div class="stat"><b>17</b><span>套文档模板</span></div>
+    <div class="stat"><b>0</b><span>行 JavaScript（交互层）</span></div>
+  </div>
+</section>
+
+<!-- ============ 特性 ============ -->
+<section class="section" id="features">
+  <div class="wrap">
+    <h2 class="sec-title">为公众号排版而生的完整工具链</h2>
+    <p class="sec-sub">不是又一个富文本编辑器——从区块、组件到交互与导出，每一层都针对微信平台的实际约束设计。</p>
+
+    <div class="cards">
+      <article class="card">
+        <div class="ico">25</div>
+        <h3>25 种内容区块</h3>
+        <p>段落、标题、引用、列表、图片画廊、代码、表格、卡片、时间轴、步骤、手风琴、按钮、SVG、Lottie、音视频、二维码、交互、HTML、分栏、微信生态、元素框……覆盖公众号常见排版形态。</p>
+      </article>
+
+      <article class="card">
+        <div class="ico">109</div>
+        <h3>109 个组件 · 12 类</h3>
+        <p>标题 / 正文 / 卡片 / 列表 / 表格 / 引用 / 分割线 / 引导 / 交互 / 元素框 / 微信生态 / 组合，点选即插入，组件源码全部开放可读。</p>
+      </article>
+
+      <article class="card">
+        <div class="ico">50</div>
+        <h3>50 个 SVG 交互组件</h3>
+        <p>滑块、刮刮卡、长按、翻牌、轮播、进度、跑马灯、点赞、评分、倒计时、烟花、飘雪……全部由 SVG SMIL 动画驱动，<b>零 JavaScript</b>，靠 <code>begin="touchstart; click"</code> 触发。</p>
+      </article>
+
+      <article class="card">
+        <div class="ico">17</div>
+        <h3>17 套文档模板</h3>
+        <p>开箱即用的排版骨架，覆盖教程、资讯、活动、知识分享等常见场景，新建即带完整结构，不用从空白页开始堆。</p>
+      </article>
+
+      <article class="card">
+        <div class="ico">✓</div>
+        <h3>导出即微信合规</h3>
+        <p>自动剥离 <code>position</code>、<code>id</code>、<code>animation</code>、<code>:hover</code>、伪元素与全部 JS，SVG 动画属性按微信白名单校验，粘贴进公众号后台即可用。</p>
+      </article>
+
+      <article class="card">
+        <div class="ico">◎</div>
+        <h3>数据全在本地</h3>
+        <p>本地 SQLite 存储文档与素材，内置文件管理器统一管文档与图片：去重、回收站、批量导入导出、反向引用。可完全离线运行，也可自行私有化部署。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 交互演示 ============ -->
+<section class="section alt" id="interactive">
+  <div class="wrap two-col">
+    <div>
+      <h2 class="sec-title left">交互不是截图，是真能点</h2>
+      <p class="sec-sub left">
+        微信公众号不允许执行 JavaScript，但允许 SVG 的 SMIL 动画。
+        InkForge 把交互做进 SVG：用 <code>&lt;animate&gt;</code> / <code>&lt;set&gt;</code> /
+        <code>&lt;animateTransform&gt;</code> 描述状态变化，靠触摸与点击触发。
+      </p>
+      <ul class="ticks">
+        <li>点击 / 触摸双写触发，移动端稳定</li>
+        <li><code>fill="freeze"</code> 保持终态，<code>restart="never"</code> 防止误触重置</li>
+        <li>世界层 / 遭遇层 / 触发层编组，深层触发器不再被遮挡</li>
+        <li>导出时逐条核对微信属性白名单</li>
+      </ul>
+      <p class="hint">右侧是一个真实的 SMIL 交互——点一下试试。它没有任何 JavaScript。</p>
+    </div>
+
+    <div class="demo">
+      <div class="demo-stage">
+        <svg viewBox="0 0 320 200" class="demo-svg" role="img" aria-label="点击触发的 SMIL 水波纹演示">
+          <rect x="0" y="0" width="320" height="200" fill="#F5F7FB"/>
+          <rect x="24" y="30" width="272" height="140" rx="14" fill="#fff" stroke="#E8E6E0"/>
+
+          <!-- 提示文字：点击后淡出 -->
+          <text x="160" y="104" text-anchor="middle" font-size="15" fill="#2C6BED" font-family="system-ui, sans-serif">
+            点一下这块区域
+            <set attributeName="opacity" to="0" begin="ripple.click" dur="0.01s" fill="freeze"/>
+          </text>
+
+          <!-- 点击后显示的结果 -->
+          <text x="160" y="104" text-anchor="middle" font-size="15" fill="#2C6BED" font-family="system-ui, sans-serif" opacity="0">
+            已触发 ✓
+            <set attributeName="opacity" to="1" begin="ripple.click" dur="0.01s" fill="freeze"/>
+          </text>
+
+          <!-- 水波纹 -->
+          <circle cx="160" cy="100" r="10" fill="none" stroke="#2C6BED" stroke-width="2" opacity="0">
+            <animate attributeName="r" begin="ripple.click" dur="0.7s" from="10" to="130" fill="freeze"/>
+            <animate attributeName="opacity" begin="ripple.click" dur="0.7s" values="0.7;0" fill="freeze"/>
+          </circle>
+          <circle cx="160" cy="100" r="10" fill="none" stroke="#6E8EFB" stroke-width="2" opacity="0">
+            <animate attributeName="r" begin="ripple.click+0.12s" dur="0.7s" from="10" to="130" fill="freeze"/>
+            <animate attributeName="opacity" begin="ripple.click+0.12s" dur="0.7s" values="0.5;0" fill="freeze"/>
+          </circle>
+
+          <!-- 透明触发层：放在最上层，保证点击不被遮挡 -->
+          <rect id="ripple" x="24" y="30" width="272" height="140" rx="14" fill="transparent" style="cursor:pointer"/>
+        </svg>
+      </div>
+      <pre class="code"><code>&lt;circle r="10" fill="none" stroke="#2C6BED"&gt;
+  &lt;animate attributeName="r"
+    begin="ripple.click" dur="0.7s"
+    from="10" to="130" fill="freeze"/&gt;
+&lt;/circle&gt;</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 微信合规 ============ -->
+<section class="section" id="compliance">
+  <div class="wrap">
+    <h2 class="sec-title">微信平台的坑，我们替你踩过了</h2>
+    <p class="sec-sub">公众号编辑器对 HTML 有严格限制。InkForge 在导出阶段逐条处理，而不是让你粘贴后反复试错。</p>
+
+    <div class="rules">
+      <div class="rule">
+        <h4>完全不可用</h4>
+        <p><code>position</code>（absolute / fixed / relative 整行删除）、<code>id</code> 属性（含 SVG 内部）、<code>animation</code> / <code>transition</code> / <code>@keyframes</code> / <code>@media</code>、<code>:hover</code> / <code>:active</code> / 伪元素、全部 JavaScript。</p>
+      </div>
+      <div class="rule">
+        <h4>SVG 动画属性白名单</h4>
+        <p>只能动 <code>x</code>、<code>y</code>、<code>width</code>、<code>height</code>、<code>cx</code>、<code>cy</code>、<code>opacity</code>、<code>d</code>、<code>points</code>、<code>stroke-width</code>、<code>stroke-dashoffset</code>、<code>fill</code> 等；<code>&lt;set&gt;</code> 限 <code>visibility</code>，<code>animateTransform</code> 限 <code>translate</code> / <code>scale</code> / <code>rotate</code> / <code>skew</code>。</p>
+      </div>
+      <div class="rule">
+        <h4>结构依赖</h4>
+        <p>不使用 <code>id</code> / <code>class</code> / <code>defs</code> / <code>embed</code>，不用 <code>href</code> 与 <code>url(#id)</code> 做结构依赖，样式一律内联 <code>style=""</code>。</p>
+      </div>
+      <div class="rule">
+        <h4>那些小怪癖</h4>
+        <p>连续空格会被合并（改用不换行空格）；<code>input</code> 会被过滤（任务列表用 ☑ / ☐）；SVG 必须显式写 <code>width</code> / <code>height</code>，否则 iOS 上不显示。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 快速开始 ============ -->
+<section class="section alt" id="start">
+  <div class="wrap">
+    <h2 class="sec-title">两种方式，一分钟跑起来</h2>
+    <div class="start-grid">
+      <div class="start-card">
+        <span class="tag">普通用户</span>
+        <h3>便携包，开箱即用</h3>
+        <ol>
+          <li>下载 <code>inkforge-1.3.0.zip</code>（162 MB，内置运行时）</li>
+          <li>解压到任意目录</li>
+          <li>Windows 双击 <code>scripts/inkforge.bat</code>；macOS / Linux 执行 <code>./scripts/inkforge.sh</code></li>
+          <li>浏览器打开 <code>http://localhost:5173</code></li>
+        </ol>
+      </div>
+      <div class="start-card">
+        <span class="tag">开发者</span>
+        <h3>从源码启动</h3>
+        <div class="code-block">
+          <div class="code-head"><span>bash</span><button class="copy" data-copy="git clone https://github.com/Yichenlemon/inkforge.git&#10;cd inkforge&#10;npm install&#10;npm run dev">复制</button></div>
+<pre><code>git clone https://github.com/Yichenlemon/inkforge.git
+cd inkforge
+npm install
+npm run dev</code></pre>
+        </div>
+        <p class="small">前端 <code>:5173</code>，后端 API <code>:5177</code>。需要 Node.js 18+。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 技术栈 ============ -->
+<section class="section" id="stack">
+  <div class="wrap">
+    <h2 class="sec-title">技术栈</h2>
+    <p class="sec-sub">前后端一体，单进程即可运行，无需外部数据库或云服务。</p>
+    <div class="chips">
+      <span class="chip">Vite</span><span class="chip">React 18</span><span class="chip">TypeScript</span>
+      <span class="chip">Express</span><span class="chip">tsx</span><span class="chip">better-sqlite3</span>
+      <span class="chip">Zustand</span><span class="chip">dnd-kit</span><span class="chip">Tiptap</span>
+      <span class="chip">Tailwind CSS</span><span class="chip">sharp</span><span class="chip">Shiki</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 下载 CTA ============ -->
+<section class="cta">
+  <div class="wrap cta-inner">
+    <h2>现在就把排版这件事，交给工具</h2>
+    <p>开源、可私有化、数据不出本机。下载即用，或直接看源码。</p>
+    <div class="hero-cta center">
+      <a class="btn btn-light btn-lg" href="https://github.com/Yichenlemon/inkforge/releases/latest" target="_blank" rel="noopener">下载最新版</a>
+      <a class="btn btn-outline btn-lg" href="https://github.com/Yichenlemon/inkforge" target="_blank" rel="noopener">GitHub 仓库</a>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div>
+      <span class="brand-text">InkForge</span>
+      <p class="small">面向微信公众号的开源可视化编辑器 · 当前发布版 v1.3.0</p>
+    </div>
+    <nav class="footer-links">
+      <a href="https://github.com/Yichenlemon/inkforge" target="_blank" rel="noopener">源码</a>
+      <a href="https://github.com/Yichenlemon/inkforge/releases" target="_blank" rel="noopener">版本</a>
+      <a href="https://github.com/Yichenlemon/inkforge/issues" target="_blank" rel="noopener">问题反馈</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/main.js"></script>
+</body>
+</html>
